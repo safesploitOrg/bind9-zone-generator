@@ -1,0 +1,574 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>dnsmasq hosts.d to BIND9 Zone Generator</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #171a23;
+      --panel-2: #1f2430;
+      --text: #e6e6e6;
+      --muted: #9aa4b2;
+      --border: #303746;
+      --accent: #6ea8fe;
+      --good: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --code: #0b0d12;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    header {
+      padding: 2rem;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #111827, #0f1117);
+    }
+
+    header h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.8rem;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    main {
+      padding: 2rem;
+      display: grid;
+      gap: 1.5rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.95rem;
+    }
+
+    textarea {
+      min-height: 300px;
+      resize: vertical;
+    }
+
+    .hint {
+      margin-top: 0.35rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    button {
+      padding: 0.75rem 1rem;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+      color: #0b0d12;
+      background: var(--accent);
+    }
+
+    button.secondary {
+      background: #d0d7de;
+    }
+
+    button.warn {
+      background: var(--warn);
+    }
+
+    .output-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    @media (min-width: 1100px) {
+      .output-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    pre {
+      margin: 0;
+      padding: 1rem;
+      min-height: 260px;
+      overflow: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--code);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+      white-space: pre;
+    }
+
+    .warning-list {
+      margin: 0;
+      padding-left: 1.2rem;
+    }
+
+    .warning-list li {
+      margin: 0.25rem 0;
+    }
+
+    .ok {
+      color: var(--good);
+      font-weight: 700;
+    }
+
+    .warning {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .error {
+      color: var(--bad);
+      font-weight: 700;
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.35rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>dnsmasq hosts.d → BIND9 Zone Generator</h1>
+    <p>Paste dnsmasq-style host records and generate BIND9 forward + reverse zone content.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="grid">
+        <div>
+          <label for="domain">Forward zone domain</label>
+          <input id="domain" value="safesploit.com" />
+          <div class="hint">Example: <code>safesploit.com</code> or <code>example.com</code></div>
+        </div>
+
+        <div>
+          <label for="networkPrefix">Network prefix filter</label>
+          <input id="networkPrefix" value="172.16.5." />
+          <div class="hint">Example: <code>172.16.5.</code>. Only matching IPs are parsed.</div>
+        </div>
+
+        <div>
+          <label for="dnsHost">Authoritative DNS host</label>
+          <input id="dnsHost" value="dns6" />
+          <div class="hint">Used in SOA/NS as <code>dns6.example.com.</code></div>
+        </div>
+
+        <div>
+          <label for="adminName">SOA admin name</label>
+          <input id="adminName" value="admin" />
+          <div class="hint">Used as <code>admin.example.com.</code></div>
+        </div>
+
+        <div>
+          <label for="ttl">TTL</label>
+          <input id="ttl" value="300" />
+        </div>
+
+        <div>
+          <label for="outputMode">Forward output mode</label>
+          <select id="outputMode">
+            <option value="include" selected>Include file only: records only</option>
+            <option value="zone">Full zone file: SOA/NS + records</option>
+          </select>
+          <div class="hint">Use include mode for files like <code>005-critical-prod.conf</code>.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <label for="hostsInput">Paste hosts.d content</label>
+      <textarea id="hostsInput" spellcheck="false" placeholder="172.16.5.10 ldap1 ldap&#10;172.16.5.18 freeipa-01.ipa ipa-01 ipa&#10;172.16.5.55 pxe iventoy"></textarea>
+      <div class="hint">
+        Format: <code>IP primary-host alias1 alias2</code>. Primary hostname becomes an A record. Extra hostnames become CNAMEs by default.
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="actions">
+        <button type="button" onclick="generateZones()">Generate BIND9</button>
+        <button type="button" class="secondary" onclick="copyOutput('forwardOutput')">Copy forward output</button>
+        <button type="button" class="secondary" onclick="copyOutput('reverseOutput')">Copy reverse output</button>
+        <button type="button" class="warn" onclick="downloadOutput('forward')">Download forward</button>
+        <button type="button" class="warn" onclick="downloadOutput('reverse')">Download reverse</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h2>Validation / Warnings</h2>
+        <span id="summary" class="hint">No generation run yet.</span>
+      </div>
+      <ul id="warnings" class="warning-list"></ul>
+    </section>
+
+    <section class="output-grid">
+      <div class="card">
+        <div class="section-title">
+          <h2>Forward Zone / Include Output</h2>
+        </div>
+        <pre id="forwardOutput"></pre>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <h2>Reverse Zone Output</h2>
+        </div>
+        <pre id="reverseOutput"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let LAST_FORWARD = "";
+    let LAST_REVERSE = "";
+    let LAST_REVERSE_ZONE = "";
+    let LAST_DOMAIN = "";
+
+    function generateSerial() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      const hh = String(now.getHours()).padStart(2, "0");
+      return `${yyyy}${mm}${dd}${hh}`;
+    }
+
+    function isIPv4(value) {
+      const match = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+      if (!match) return false;
+      return match.slice(1).every((octet) => Number(octet) >= 0 && Number(octet) <= 255);
+    }
+
+    function isFQDNLike(hostname) {
+      return hostname.includes(".");
+    }
+
+    function stripTrailingDot(value) {
+      return value.endsWith(".") ? value.slice(0, -1) : value;
+    }
+
+    function ensureAbsoluteName(name, domain) {
+      if (name.endsWith(".")) return name;
+      if (isFQDNLike(name)) return `${name}.`;
+      return `${name}.${domain}.`;
+    }
+
+    function bindName(name) {
+      return name;
+    }
+
+    function cnameTarget(primary) {
+      if (primary.endsWith(".")) return primary;
+      return primary;
+    }
+
+    function reverseZoneFromPrefix(prefix) {
+      const clean = prefix.replace(/\.$/, "");
+      const octets = clean.split(".");
+      if (octets.length !== 3) return "INVALID-PREFIX.in-addr.arpa";
+      return `${octets[2]}.${octets[1]}.${octets[0]}.in-addr.arpa`;
+    }
+
+    function zoneHeader(domain, dnsHost, adminName, ttl) {
+      const serial = generateSerial();
+      const ns = ensureAbsoluteName(dnsHost, domain);
+      const admin = ensureAbsoluteName(adminName, domain);
+
+      return `$TTL ${ttl}\n@   IN  SOA ${ns} ${admin} (\n        ${serial} ; serial\n        3600       ; refresh\n        900        ; retry\n        604800     ; expire\n        86400 )    ; minimum\n\n    IN  NS  ${ns}\n\n`;
+    }
+
+    function parseHosts(input, prefix) {
+      const records = [];
+      const warnings = [];
+      const lines = input.split("\n");
+
+      lines.forEach((rawLine, index) => {
+        const lineNumber = index + 1;
+        let line = rawLine.trim();
+
+        if (!line || line.startsWith("#") || line.startsWith(";")) return;
+
+        line = line.split("#", 1)[0].split(";", 1)[0].trim();
+        if (!line) return;
+
+        const parts = line.split(/\s+/);
+        if (parts.length < 2) {
+          warnings.push({ type: "warn", message: `Line ${lineNumber}: skipped because it has fewer than 2 fields.` });
+          return;
+        }
+
+        const ip = parts[0];
+        const hostnames = parts.slice(1).filter(Boolean);
+
+        if (!isIPv4(ip)) {
+          warnings.push({ type: "warn", message: `Line ${lineNumber}: skipped invalid IPv4 address: ${ip}` });
+          return;
+        }
+
+        if (!ip.startsWith(prefix)) return;
+
+        records.push({ ip, hostnames, lineNumber });
+      });
+
+      return { records, warnings };
+    }
+
+    function analyseRecords(records) {
+      const warnings = [];
+      const nameToIps = new Map();
+      const ipToNames = new Map();
+
+      records.forEach((record) => {
+        if (!ipToNames.has(record.ip)) ipToNames.set(record.ip, []);
+        ipToNames.get(record.ip).push(...record.hostnames);
+
+        record.hostnames.forEach((name) => {
+          const key = stripTrailingDot(name);
+          if (!nameToIps.has(key)) nameToIps.set(key, new Set());
+          nameToIps.get(key).add(record.ip);
+        });
+      });
+
+      nameToIps.forEach((ips, name) => {
+        if (ips.size > 1) {
+          warnings.push({
+            type: "warn",
+            message: `Hostname '${name}' appears on multiple IPs: ${Array.from(ips).join(", ")}. This may be intended round-robin, but aliases should not be CNAMEs in that case.`
+          });
+        }
+      });
+
+      ipToNames.forEach((names, ip) => {
+        const uniqueNames = Array.from(new Set(names));
+        if (uniqueNames.length > 1) {
+          warnings.push({
+            type: "info",
+            message: `IP ${ip} has multiple names: ${uniqueNames.join(", ")}. Reverse DNS will use the first primary hostname only.`
+          });
+        }
+      });
+
+      records.forEach((record) => {
+        record.hostnames.forEach((name) => {
+          if (isFQDNLike(name) && !name.endsWith(".")) {
+            warnings.push({
+              type: "info",
+              message: `Name '${name}' contains a dot. In BIND this is relative unless you add a trailing dot. It will become '${name}.${document.getElementById("domain").value.trim()}'.`
+            });
+          }
+        });
+      });
+
+      return warnings;
+    }
+
+    function generateForward(records, domain, dnsHost, adminName, ttl, outputMode) {
+      let output = "";
+
+      if (outputMode === "zone") {
+        output += zoneHeader(domain, dnsHost, adminName, ttl);
+      }
+
+      output += `; ================================\n; Generated BIND9 Records\n; Primary hostname = A record\n; Additional names = CNAME records\n; ================================\n\n`;
+
+      const emittedA = new Set();
+      const emittedCname = new Set();
+      const namesWithA = new Set();
+
+      records.forEach((record) => {
+        const primary = bindName(record.hostnames[0]);
+        const primaryKey = stripTrailingDot(primary);
+
+        if (!emittedA.has(`${primaryKey}:${record.ip}`)) {
+          output += `${primary.padEnd(32)} IN       A        ${record.ip}\n`;
+          emittedA.add(`${primaryKey}:${record.ip}`);
+          namesWithA.add(primaryKey);
+        }
+
+        record.hostnames.slice(1).forEach((alias) => {
+          const aliasKey = stripTrailingDot(alias);
+          const target = cnameTarget(primary);
+
+          if (aliasKey === primaryKey) return;
+          if (namesWithA.has(aliasKey)) return;
+          if (emittedCname.has(aliasKey)) return;
+
+          output += `${alias.padEnd(32)} IN       CNAME    ${target}\n`;
+          emittedCname.add(aliasKey);
+        });
+
+        output += "\n";
+      });
+
+      return output.trimEnd() + "\n";
+    }
+
+    function generateReverse(records, domain, dnsHost, adminName, ttl, prefix) {
+      const reverseZone = reverseZoneFromPrefix(prefix);
+      let output = zoneHeader(reverseZone, dnsHost + "." + domain, adminName + "." + domain, ttl);
+
+      output += `; ================================\n; Generated PTR Records\n; Reverse Zone: ${reverseZone}\n; ================================\n\n`;
+
+      const emitted = new Set();
+
+      records.forEach((record) => {
+        if (emitted.has(record.ip)) return;
+        emitted.add(record.ip);
+
+        const lastOctet = record.ip.split(".").pop();
+        const primary = ensureAbsoluteName(record.hostnames[0], domain);
+        output += `${lastOctet.padEnd(8)} IN       PTR      ${primary}\n`;
+      });
+
+      LAST_REVERSE_ZONE = reverseZone;
+      return output.trimEnd() + "\n";
+    }
+
+    function renderWarnings(warnings) {
+      const list = document.getElementById("warnings");
+      list.innerHTML = "";
+
+      if (warnings.length === 0) {
+        const li = document.createElement("li");
+        li.className = "ok";
+        li.textContent = "No warnings detected.";
+        list.appendChild(li);
+        return;
+      }
+
+      warnings.forEach((warning) => {
+        const li = document.createElement("li");
+        li.className = warning.type === "warn" ? "warning" : "hint";
+        li.textContent = warning.message;
+        list.appendChild(li);
+      });
+    }
+
+    function generateZones() {
+      const domain = document.getElementById("domain").value.trim();
+      const prefix = document.getElementById("networkPrefix").value.trim();
+      const dnsHost = document.getElementById("dnsHost").value.trim();
+      const adminName = document.getElementById("adminName").value.trim();
+      const ttl = document.getElementById("ttl").value.trim();
+      const outputMode = document.getElementById("outputMode").value;
+      const input = document.getElementById("hostsInput").value;
+
+      const parsed = parseHosts(input, prefix);
+      const analysisWarnings = analyseRecords(parsed.records);
+      const warnings = parsed.warnings.concat(analysisWarnings);
+
+      const forward = generateForward(parsed.records, domain, dnsHost, adminName, ttl, outputMode);
+      const reverse = generateReverse(parsed.records, domain, dnsHost, adminName, ttl, prefix);
+
+      LAST_FORWARD = forward;
+      LAST_REVERSE = reverse;
+      LAST_DOMAIN = domain;
+
+      document.getElementById("forwardOutput").textContent = forward;
+      document.getElementById("reverseOutput").textContent = reverse;
+      document.getElementById("summary").textContent = `${parsed.records.length} matching records parsed.`;
+
+      renderWarnings(warnings);
+    }
+
+    async function copyOutput(elementId) {
+      const text = document.getElementById(elementId).textContent;
+      if (!text.trim()) return;
+      await navigator.clipboard.writeText(text);
+    }
+
+    function downloadText(filename, text) {
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadOutput(type) {
+      if (type === "forward") {
+        const mode = document.getElementById("outputMode").value;
+        const filename = mode === "zone" ? `db.${LAST_DOMAIN || "zone"}` : `records.conf`;
+        downloadText(filename, LAST_FORWARD || document.getElementById("forwardOutput").textContent || "");
+      }
+
+      if (type === "reverse") {
+        const filename = LAST_REVERSE_ZONE ? `db.${LAST_REVERSE_ZONE}` : "db.reverse";
+        downloadText(filename, LAST_REVERSE || document.getElementById("reverseOutput").textContent || "");
+      }
+    }
+  </script>
+</body>
+</html>
