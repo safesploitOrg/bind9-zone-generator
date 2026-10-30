@@ -1,0 +1,15 @@
+$ORIGIN example.com.
+$TTL 5m
+@ IN SOA ns1.example.com. hostmaster.example.com. (
+  2026103000 ; serial
+  1h 15m 1w 1d )
+  IN NS ns1.example.com.
+ns1 IN A 192.0.2.53
+app IN A 192.0.2.10
+    10m IN A 192.0.2.11
+www IN CNAME app
+portal IN CNAME www
+db IN A 192.0.2.20
+$ORIGIN sub
+cache IN A 192.0.2.30
+@ IN TXT "A semicolon; parentheses ( ) stay inside quoted data"

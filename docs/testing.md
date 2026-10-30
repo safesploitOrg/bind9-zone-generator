@@ -1,8 +1,8 @@
-# Testing and CI
+# Testing and CI — 0.2.0-alpha.1
 
-## Fast local checks
+## Fast checks
 
-Requires Node 22+ and npm; CI uses Node 24. The package has no runtime or development npm dependencies. Run from the repository root:
+Node 22+ is required; CI uses Node 24. There are no npm runtime/development dependencies.
 
 ```bash
 npm ci --ignore-scripts --no-audit --no-fund
@@ -10,54 +10,60 @@ npm run check
 npm run test:coverage
 ```
 
-`check` runs focused source-policy/syntax checks and Node unit tests. The source check validates local asset/import paths, external scripts/styles, unique HTML IDs, lockfile versions and full action SHA pins. It is not a complete language/style linter.
+`check` runs focused source-policy/syntax checks and all Node unit tests. Source checks cover asset/import paths, external scripts/styles, IDs, a connection-blocking policy, lockfile versions and action SHA pins. They are not a complete language/style linter.
 
-The tests cover parser boundaries, comments, filtering, warnings, deterministic headers, forward/reverse records, export snapshots and UI adapters. Unit tests use an in-memory DOM/API adapter; they do not launch a browser. There are no skipped or TODO test cases in this foundation suite.
+Current tests cover configuration/naming/network/serial boundaries, CNAME/A conflicts, malformed syntax, logical BIND records, offline aliases/loops/depth, grouping/name styles, limits, UI exports/error recovery, serial advancement and tabs. A deterministic corpus invokes the two parsers 800 times across 400 malformed inputs. No tests are skipped or marked TODO.
 
-## Compatibility evidence
-
-`tests/fixtures/legacy/cases.json` records the original source commit, fixed local clock, inputs and settings. The adjacent output/warning fixtures were generated from the original inline script at that commit, rather than from the extracted implementation. Nine cases verify byte-level forward/reverse parity and warning/row-count parity. Cases naming known issues preserve historical behaviour, not desired future correctness.
+Eleven correctness regressions were added and observed failing before the fixes. Historical fixtures under `tests/fixtures/legacy/` remain unchanged evidence, no longer byte-for-byte expected current output. Migration tests explicitly assert their corrected/rejected cases. Current `tests/fixtures/bind/reference.zone` and `.hosts` were written independently of generated output.
 
 ## Independent BIND checks
 
-Install `named-checkzone` from `bind9-utils` on Debian/Ubuntu or `bind-utils` on RHEL-compatible systems, then run:
+Install `named-checkzone` using `bind9-utils` (Debian/Ubuntu) or `bind-utils` (RHEL-compatible). An alternative executable path can be supplied through `BIND_CHECKZONE`.
 
 ```bash
 npm run test:bind
 ```
 
-The script checks three valid boundaries: a full forward zone with an in-zone NS address, a reverse zone and an include fragment loaded through a complete parent zone. It also expects BIND to reject an invalid TTL and the inherited CNAME/A conflict. Those negative cases prove validator rejection; the app itself does not yet block the bad input. Missing validators or unexpected exit codes fail the command.
+The script checks six generated forward/reverse files across `/8`, `/16`, `/24`, a parent-zone `$INCLUDE`, and the reference forward zone. It compares importer results from the reference text with results from BIND's canonical dump. Two deliberately invalid zones must be rejected, and the app must reject the old CNAME/A conflict. Missing tools, unexpected exits or disagreement fail the command; nothing is silently skipped.
 
-## Targeted SAST and credential checks
+These checks passed locally with BIND 9.18.39. This is evidence for those cases/version, not every BIND release or grammar extension.
 
-CI installs Semgrep 1.183.0 in an isolated Python environment and runs:
+## Targeted security checks
+
+CI installs Semgrep 1.183.0 in an isolated Python environment:
 
 ```bash
 node scripts/security-scan.mjs --self-test
 node scripts/security-scan.mjs
 ```
 
-Set `SEMGREP` to an absolute scanner path if it is not on `PATH`. The self-test must observe a nonzero scanner result for synthetic unsafe JavaScript and a fake credential. Normal scans fail on any configured finding or scanner/report error. Reports show only rule IDs and locations, avoiding matched credential text.
+Use `SEMGREP` for an absolute scanner path if needed. The self-test requires failure for synthetic unsafe code and a fake credential. Real scans fail on configured findings, scanner errors, unreadable reports, no scanned files or any unscanned production JS module. Only IDs/locations are printed, not matched credential text.
 
-Rules are local and focused: dynamic code execution, unsafe HTML insertion, selected GitHub/AWS credential formats and private-key headers. This is not comprehensive SAST or full secret-format/history scanning. No results upload or remote scan configuration is used. There is no application dependency audit to run while the npm dependency graph is empty; introduce a blocking audit when adding dependencies. Scanner transitive Python packages are not hash-locked in this first stage.
+Four local rules cover dynamic code execution, unsafe HTML insertion, selected GitHub/AWS token patterns and private-key headers. This is initial targeted SAST/credential coverage, not comprehensive SAST, full secret-history scanning or a dependency audit. The application npm graph is empty; add a blocking audit if dependencies are introduced. Scanner Python transitive dependencies are not hash-locked/audited here.
+
+## Optional local browser matrix
+
+```bash
+npm run test:browser
+```
+
+This requires an existing Playwright installation and usable Chromium, Firefox and WebKit binaries. `PLAYWRIGHT_MODULE` may point to that installation's `index.mjs`; standard Playwright browser-path settings are respected. The script does not install packages/browsers and is not called by CI.
+
+The suite implements nine combinations: three engines at 390×844, 768×1024 and 1440×900, reduced motion and 200% zoom. Journeys cover default selection, both examples/converters, serial advancement, keyboard tabs/focus, real downloads, deliberately simulated clipboard denial, form labels, stale/error export blocking and preserved tab state. These checks do not establish full WCAG compliance or native-device coverage.
+
+The authoring attempt could not launch: the browser download yielded unusable archives and no executable. **No real-browser, visual, accessibility or native clipboard/download pass is claimed.** Playwright remains disabled in CI under [EX-001](engineering/EXCEPTIONS.md); there is no hidden install, success wrapper or skipped browser job misrepresented as a gate.
 
 ## CI contract
 
-One workflow runs on pushes to `main`, pull requests and manual dispatch:
+One workflow handles main pushes, PRs and manual dispatch:
 
 | Job | Gate |
 | --- | --- |
-| `quality` | Reproducible dependency-free npm setup, source checks and all unit tests. |
-| `security` | Scanner self-test, then targeted SAST/credential scan. |
-| `bind-validation` | Independent positive and negative BIND fixtures. |
-| `deploy` | Requires all three jobs; only runs on `main` outside a pull-request event. |
+| `quality` | Dependency-free npm setup, source checks and all unit tests. |
+| `security` | Scanner failure self-test and targeted source/credential scan. |
+| `bind-validation` | Independent positive/negative zones and parser differential check. |
+| `deploy` | Requires all three; main branch only, excluding PR events. |
 
-There is no `continue-on-error` or unconditional success wrapper for these checks. Actions are pinned to full commits; only deployment has Pages/OIDC write permissions. Each job checks out the event's commit, and there is no build transform. The published artifact contains only `public/` from that validated revision. The shared `pages` concurrency group prevents concurrent deployment workflows.
+No `continue-on-error` or unconditional success wrapper is used. Actions are SHA-pinned; only deploy has Pages/OIDC write privileges. Every job checks out the event commit; public assets are published without a build transform. The `pages` concurrency group serialises workflows.
 
-Repository rulesets/required checks and the first hosted execution are outside this local package's verification. A workflow file alone does not establish server-side enforcement.
-
-## Browser coverage
-
-Playwright is intentionally disabled in CI under owner direction [EX-001](engineering/EXCEPTIONS.md). No browser tests have been deleted or silently skipped. No Playwright package or browser download is installed by CI.
-
-Before feature 2, revisit browser verification for generation, warning display, clipboard denial, actual file downloads, tab keyboard behaviour, 390×844 / 768×1024 / 1440×900 layouts, zoom and accessibility. Keep any browser job and its deployment dependency consistent when enabling it. See [verification.md](verification.md) for the actual authoring checks and limitations.
+Hosted execution, branch-required checks and environment protection remain unverified until a separately authorised push. Browser CI is intentionally absent. See [verification.md](verification.md) for executed evidence and release gaps.

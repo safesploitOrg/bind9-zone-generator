@@ -1,142 +1,114 @@
-# Architecture — BIND9 Zone Generator
+# Architecture — DNS Record Converter
 
-> Updated: 30 October 2026. Prepared version: `0.1.0-alpha.1` (unreleased).
-> Baseline: [`94a83854a5f55997a75726cabd46db4e6c2c96b6`](https://github.com/safesploitOrg/bind9-zone-generator/commit/94a83854a5f55997a75726cabd46db4e6c2c96b6).
-> Current state below describes the source in this package; it has not been pushed or deployed.
+> Updated 30 October 2026. Source package `0.2.0-alpha.1`, unreleased and untagged.
+> Historical GitHub baseline: [`94a8385`](https://github.com/safesploitOrg/bind9-zone-generator/commit/94a83854a5f55997a75726cabd46db4e6c2c96b6).
 
-## 1. Purpose and scope
+## 1. Purpose and operating model
 
-Convert pasted dnsmasq/hosts-style text into BIND9 A/CNAME forward records and PTR reverse records. The user generates, reviews and exports text; installation and independent DNS validation remain separate operator tasks.
+The application converts hosts-style inventory into BIND9 zones, and BIND forward-zone text into IPv4 hosts-file mappings. Both directions run locally in a static page. It has no backend, database, runtime dependencies, build transform, remote conversion API or automatic DNS/hosts installation.
 
-The application is browser-only and static. It has no backend, database, runtime library dependencies, network conversion API, storage layer or build step. The public directory is published directly. Profiles B + D apply under the supplied SFW standard. The foundation refactor is reviewed conservatively as T2 because untrusted parsing code and delivery gates are involved, despite preserving the conversion grammar.
+The default tab retains **dnsmasq hosts.d → BIND9 Zone Generator**. The second tab is **BIND → /etc/hosts**. Each has independent settings, input, output, validation and export state. Profiles B + D apply under SFW v1.1.0; this parser-sensitive change is T2 and has not been publicly released.
 
-This stage extracts the original single-file implementation, adds maintained tests and CI checks, and fixes export-state handling. It does not implement tabs, a BIND parser or `/etc/hosts` output.
+## 2. Modules and dependencies
 
-## 2. Source organisation
-
-| Path | Responsibility |
+| Module/path | Responsibility |
 | --- | --- |
-| `public/index.html` | Semantic controls and output containers, with external stylesheet/module/favicon references. |
-| `public/assets/css/styles.css` | Original dark theme and responsive layout; disabled-export and status styles. |
-| `public/assets/js/core.js` | Pure IPv4 parsing, name analysis, forward/reverse serialisation and header helpers. |
-| `public/assets/js/converter.js` | Calls core functions and captures output, settings, warnings and export metadata. |
-| `public/assets/js/ui.js` | DOM/event adapters, rendering, clipboard, downloads and stale-input feedback. |
-| `public/assets/js/app.js` | `main()` creates and binds the browser UI. |
-| `public/assets/images/favicon.svg` | Code-native network favicon, with no remote image dependency. |
-| `tests/unit/` | Node tests for core, converter and UI adapters. |
-| `tests/fixtures/legacy/` | Nine original-output cases, with input/config/clock/source-commit provenance. |
-| `scripts/` | Focused source checks, independent BIND validation and targeted security scanner wrapper. |
-| `.semgrep.yml` | Local SAST/credential patterns. |
-| `.github/workflows/static.yml` | Source/unit, security and BIND jobs, followed by gated Pages deployment. |
-| `docs/engineering/` | Canonical SFW v1.1.0 policy and the owner-directed Playwright exception. |
+| `public/index.html` | Tab/panel semantics, labelled controls, output and status containers, local assets and meta CSP. |
+| `public/assets/css/styles.css` | Responsive layout, explicit hidden states, keyboard focus and output scrolling. |
+| `public/assets/js/app.js` | `main()` creates and binds the browser adapters. |
+| `ui.js` | Reads inputs, owns per-tab result/stale state, renders text, handles failures and clipboard/download I/O. |
+| `tabs.js` | ARIA selected state, roving tabindex, hidden panels and arrow/Home/End navigation. |
+| `validation.js` | Shared `ConversionError`, input/work limits, DNS naming, IPv4/network/TTL/serial rules and output bounds. |
+| `core.js` | Hosts parser, complete primary/alias model and forward/reverse serialisation. |
+| `converter.js` | Validates settings, coordinates hosts conversion, captures outputs/config/serial and selects export metadata. |
+| `bind-parser.js` | Bounded logical-record lexer and separate BIND parsing grammar. |
+| `bind-converter.js` | Offline CNAME resolution, deterministic grouping and name-format selection. |
+| `examples.js` | Self-contained examples; no external assets/data. |
+| `public/assets/images/favicon.svg` | Local vector favicon. |
+| `tests/unit/`, `tests/fixtures/` | Current regressions/reference data and clearly labelled historical fixtures. |
+| `scripts/`, `.semgrep.yml` | Source checks, independent BIND checks, targeted scanner and optional local browser matrix. |
+| `.github/workflows/static.yml` | Validation-gated Pages delivery; browser CI remains disabled by owner direction. |
 
-Only `public/` is deployed. Tests, policy, package metadata and documentation stay outside the publish root. Node/npm support development verification; browsers do not need them. ES modules require HTTP/HTTPS serving, including for local development.
-
-## 3. Dependency and data flow
+Only `public/` is deployed. Node/npm are verification tooling, not browser requirements. Static ES modules require HTTP/HTTPS serving. Relative paths support GitHub Pages project URLs.
 
 ```mermaid
 flowchart TD
-    App["app.js: browser setup"] --> UI["ui.js: input and events"]
-    UI --> Converter["converter.js: conversion result"]
-    Converter --> Core["core.js: parse, analyse, generate"]
-    Core --> Converter
-    Converter --> Result["Captured settings, text and warnings"]
+    App["app.js"] --> UI["ui.js and tabs.js"]
+    UI --> Hosts["converter.js and core.js"]
+    UI --> Bind["bind-parser.js and bind-converter.js"]
+    Hosts --> Shared["validation.js"]
+    Bind --> Shared
+    Hosts --> Result["Per-tab conversion result"]
+    Bind --> Result
     Result --> UI
-    UI --> Screen["Text output and status"]
-    UI --> Clipboard["Clipboard"]
-    UI --> Files["Local text download"]
+    UI --> Output["Text, clipboard and downloads"]
 ```
 
-Parsing and generation run synchronously on the main thread. Pure functions do not read the DOM, mutate an export cache or perform I/O. `analyseRecords(records, domain)` receives its warning context explicitly. Clock-dependent helpers accept an optional `Date`; `convertHosts()` supplies one captured timestamp to both headers.
+## 3. Data flow and state
 
-`createApp()` accepts document, clipboard, URL, Blob and clock adapters. Tests replace those dependencies rather than attempting to emulate a complete browser. The browser entry point supplies the actual APIs and binds event listeners; no inline scripts or `onclick` attributes remain.
+The hosts path validates configuration, parses rows, canonicalises names, builds a complete A-owner index, checks aliases, chooses one serial and renders forward/reverse text. The BIND path first tokenises logical records, then parses context and supported mappings, validates conflicts, resolves bounded alias chains and groups hostnames by numeric-sorted address.
 
-## 4. Data and state
+Pure conversion code does not read the DOM or perform I/O. `createApp()` receives document, clipboard, URL, Blob and clock adapters. The browser supplies native APIs; unit tests supply focused adapters rather than pretending to be a full browser.
 
-The parser returns:
+Hosts results contain copied validated configuration, a serial, accepted-row count, warnings, forward/reverse text and reverse-zone name. BIND results contain origin/name style, source/A-record counts, hosts-line count, warnings and hosts text. Errors are `ConversionError` instances with stable codes and bounded diagnostic messages/line context.
 
-```js
-{
-  records: [{ ip: '192.0.2.10', hostnames: ['app', 'www'], lineNumber: 1 }],
-  warnings: [{ type: 'warn', message: 'Explanation' }]
-}
-```
+The UI owns one result and stale flag for each direction. A successful run enables only that direction's exports. Edits mark it stale and disable export; a failed run clears that tab's old output. Export filenames/content come from the same captured result. Switching tabs does not regenerate or discard results.
 
-`convertHosts(input, config, now)` returns a result containing a copied `config`, `recordCount`, combined `warnings`, `forward`, `reverse` and `reverseZone`. Config fields are `domain`, `prefix`, `dnsHost`, `adminName`, `ttl` and `outputMode`.
+No cookies, local/session storage, IndexedDB or service worker are used. State exists only in page memory. Successful hosts generation updates the visible previous-serial field so a following run increments it; reloads do not preserve installed DNS state. Clipboard/downloads are deliberate external copies.
 
-The UI keeps the last result in its closure. Output DOM nodes are presentation, not the source of truth for exports. `exportFile(result, type)` derives filenames and content from the same captured result. Current input edits cannot change an old export's filename. The UI flags edits as stale and requires regeneration to update output. Export buttons start disabled and are enabled after a generation run.
+## 4. Hosts → BIND contracts
 
-There is no application use of cookies, local/session storage, IndexedDB or a service worker. Pasted inventory lives in page memory until the user exports it or the page is discarded; browser-managed form restoration is separate. The app does not control retained clipboard/download copies.
+Rows are IPv4 plus primary/alias names, with whitespace and `#`/`;` comments. Valid non-matching addresses are filtered; malformed rows and invalid names/settings block the conversion. Leading-zero address components are normalised as decimal. Empty or oversized results cannot be exported.
 
-## 5. Parsing and DNS contracts
+Supported networks are octet prefixes and aligned `/8`, `/16`, `/24` CIDR. The reverse descriptor owns both the zone and remaining-octet count: `172.16.` produces zone `16.172.in-addr.arpa` and address `172.16.5.10` produces owner `10.5`.
 
-Input rows are `IP primary-name aliases`. Empty lines and `#`/`;` comments are ignored. The parser splits whitespace, skips malformed IPv4 or short rows with warnings, and silently excludes addresses whose text does not start with the configured prefix. IPv4 octets are range-checked but not canonicalised. IPv6, CIDR arithmetic, quoted names and general dnsmasq directives are unsupported.
+Names are lowercased validated ASCII hostnames. Explicit terminal dots are absolute; bare in-domain FQDNs are recognised as a hosts-input convenience; other names, including dotted-relative ones, gain the selected domain. Forward/PTR/header naming shares those rules. Explicitly out-of-zone owners are rejected.
 
-The shipped defaults remain `safesploit.com`, prefix `172.16.`, DNS host `dns6`, admin label `admin`, TTL `300` and forward `include` mode. The default prefix is an inherited reverse-generation defect; it is preserved and tracked as A-01, not silently reinterpreted as a subnet.
+Primary A records are indexed before aliases are checked, preventing input-order CNAME/A conflicts. Aliases cannot have different targets, occupy the zone apex or name the authoritative server. Multiple addresses on an A owner are supported. PTR keeps the first primary per address, with a notice if another primary exists.
 
-### Forward output
+Full forward output includes an explicit origin, TTL, SOA and NS; an in-zone NS must have an A record in selected input. Include output has absolute names and per-record TTLs. Reverse output is always a complete zone. Supported files are independently checked by BIND in integration tests.
 
-- Primary names become A records; aliases become CNAMEs pointing at the primary.
-- Owners and CNAME targets are emitted unchanged. Names ending in a dot are absolute; other master-file names are relative to the loading origin, even when they contain dots.
-- Include mode omits `$TTL`, `$ORIGIN`, SOA and NS. `records.conf` is a zone master-file fragment, intended for `$INCLUDE` inside a complete zone, not a `named.conf` include.
-- Full mode prepends `$TTL`, apex SOA and one NS record. It still relies on the origin supplied when loading; nameserver address records must be supplied appropriately.
-- A deduplication keys are primary-with-one-trailing-dot-removed plus IP; CNAME keys are aliases with one trailing dot removed. First alias target wins, and only A owners already encountered suppress an alias. This is not complete DNS-aware conflict detection.
+A supplied previous serial increments modulo 2³²; otherwise a UTC `YYYYMMDD00` seed is used. One serial is shared by the two outputs. This handles successive runs and supplied installed state, not automatic installed-state discovery.
 
-### Reverse output and headers
+## 5. BIND → hosts contracts
 
-The reverse generator assumes one `/24`-style zone: `192.0.2.` becomes `2.0.192.in-addr.arpa`, and `192.0.2.10` produces owner `10`. A distinct IP emits one PTR to its first primary name. Short targets gain the forward domain; dotted targets are treated as absolute by the existing helper, creating the A-03 mismatch for dotted-relative input.
+The lexer tracks quotes, escapes, comments and parentheses before recognising logical records. It preserves leading-whitespace owner inheritance and source lines. The parser handles `$ORIGIN`, `$TTL`, TTL/class ordering and subdomain origins without interpreting record-looking strings inside quoted RDATA.
 
-Only three prefix components are accepted by the reverse-name helper; other shapes return `INVALID-PREFIX.in-addr.arpa`. There is no broad-subnet, multi-zone, IPv6 or classless-delegation support. Reverse headers still concatenate the supplied DNS host/admin with the forward domain, retaining A-04 for already qualified settings.
+BIND names use strict master-file origin rules; the hosts-input FQDN convenience does not apply. An initial origin supplies fragment context, the first directive may establish it, and subsequent origins stay within one selected zone. Explicit absolute records need no origin unless short-only display is requested.
 
-SOA refresh/retry/expire/final timing values remain 3600/900/604800/86400. Serials remain local `YYYYMMDDHH`; using one clock value per conversion aligns both files but does not make serials monotonic across conversions.
+IPv4 `IN A` and `IN CNAME` mappings are supported. Other common types/classes, wildcard owners and out-of-zone supported owners produce notices and are omitted. Unsupported RDATA is not fully validated. File includes, generated records, unsupported directives, malformed supported data, alias conflicts/loops and excessive work block output.
 
-Warnings remain advisory. Accepted-row count precedes deduplication and is not a record count or BIND validation result. Full details and mitigations are in [docs/known-issues.md](docs/known-issues.md).
+CNAME resolution uses only pasted A data and a bounded iterative chain/cache model. Missing/external targets produce notices; no lookup or invented address occurs. Multi-address targets expand their alias onto each address. CNAME owners cannot overlap incompatible data or the zone apex.
 
-## 6. Rendering and export boundaries
+Output contains one numeric-sorted IP line. A-owner names sort before CNAME aliases, determining a stable canonical name. FQDN-only, origin-relative-only and both formats are available; terminal dots are removed. Apex names remain the domain, never `@`. TTLs and DNS-only semantics are deliberately lost.
 
-Generated text and warning messages are inserted through `textContent` and created elements. Warning lists use `replaceChildren()`; no HTML string insertion is required. Labels, controls and the original 1100 px two-column output breakpoint are retained. An `aria-live` status element reports export failures and stale output.
+The complete grammar/limit contract is in [docs/format-contract.md](docs/format-contract.md).
 
-Clipboard export awaits `navigator.clipboard.writeText()` and catches failures. Downloads create a text Blob and temporary object URL/anchor, then release them. Before generation, export methods do nothing and buttons are disabled. Suggested filenames remain `records.conf`, `db.<domain>` and `db.<reverse-zone>`, based on the captured result.
+## 6. Resource and trust boundaries
 
-DOM adapter tests cover these boundaries but do not establish browser-native permission behaviour, rendering or accessibility compliance.
-
-## 7. Trust and security
-
-| Boundary | Control | Remaining limitation |
+| Boundary | Control | Residual consideration |
 | --- | --- | --- |
-| User text → core | No dynamic code execution or network/storage API; IPv4 checks and warning paths. | Comprehensive name/settings validation and input/work bounds remain absent. |
-| Data → DOM | Text sinks and native element creation; no inline execution. | Real-browser verification is outstanding. |
-| Data → zone text | Original serialisation is preserved and compared with legacy fixtures. | Known DNS defects persist; snapshots prove compatibility only. |
-| Browser → export | Captured result owns output/filenames; failure feedback and cleanup. | Copies may contain confidential inventory. |
-| Repository → hosting | Action SHA pins, restricted permissions and validation dependencies. | Hosted enforcement and environment protection must be verified separately. |
+| Pasted input → parser | 1 MB/20,000-line limit; 10,000 records/names; bounded tokens/logical records; strict supported syntax. | A synchronous parser can still take time on slow devices; no universal latency guarantee. |
+| Alias data → grouping | 32-hop depth, 200,000 work/expansion operations, 256 names per IP. | Hosts output cannot reproduce DNS resolver ordering or dynamic round-robin behaviour. |
+| Data → screen | `textContent`, element creation and `replaceChildren`; no HTML insertion or inline handlers. | Real-browser/a11y execution is not verified here. |
+| Page → external systems | No fetch/storage/third-party code; meta CSP blocks connections/forms/objects/base URLs and permits local assets. | Hosting logs, extensions and response headers are outside this source assessment; CSP needs browser verification. |
+| Output → files | 2 MB per-output limit, captured metadata, disabled stale/error exports, cleanup and failure feedback. | User copies may contain private inventory and require manual review/retention. |
+| Source → hosting | SHA-pinned actions, restricted deployment permissions and validation dependencies. | Hosted required checks/environment protection remain unverified; no deployment occurred. |
 
-No runtime network calls, telemetry, third-party assets or persistence are introduced. Hosting logs and extensions are outside this source-level assessment. There is no backend authentication or database boundary. A CSP/live-header assessment has not been performed. See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
+There is no backend authentication, session, database or privileged network boundary. No DNS/hosts installation is performed. See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
 
-## 8. Verification and delivery
+## 7. Tests and delivery
 
-The development toolchain is Node 22+ with a dependency-free package/lockfile; CI selects Node 24. `npm run check` runs focused source-policy/syntax checks and unit tests. Golden outputs were captured from the original inline implementation at the baseline commit using a fixed local timestamp. Known-defect compatibility cases are explicitly labelled.
+`npm run check` runs focused source checks and Node tests. Current tests cover correctness regressions that failed before fixes, parser syntax and limits, deterministic malformed inputs, alias resolution, reference mappings, UI error/export behaviour and tabs. Legacy fixtures remain unchanged historical evidence, not desired current outputs.
 
-`npm run test:bind` uses an independent BIND parser for complete forward/reverse zones and a parent-zone `$INCLUDE`, with negative malformed/conflicting fixtures. The targeted Semgrep wrapper blocks configured findings and scanner/report errors, tests its failure behaviour with synthetic findings, and avoids printing matched credential material.
+`npm run test:bind` independently validates `/8`, `/16`, `/24`, complete/include-parent zones, negative invalid zones, and agreement between importer results from an original fixture and BIND canonicalisation. Targeted Semgrep checks fail on configured findings or scanner/report errors, verify all production JS files were scanned, and test scanner failure with synthetic findings.
 
-The workflow runs on `main` pushes, PRs and manual dispatch. `deploy` requires `quality`, `security` and `bind-validation`; PRs cannot deploy. Only `deploy` receives Pages/OIDC write permissions. No build transform occurs, and each job checks out the event commit, so deployment publishes `public/` from the validated source revision. The `pages` concurrency group prevents overlapping workflows.
+The optional local browser script covers three engines × three viewports, keyboard tabs, actual downloads, denied clipboard access, labels, stale/error recovery, reduced motion and zoom. Its execution is blocked by unavailable browser binaries here. Playwright CI remains explicitly disabled under [EX-001](docs/engineering/EXCEPTIONS.md).
 
-Playwright is deliberately disabled in CI by owner direction [EX-001](docs/engineering/EXCEPTIONS.md). No passing browser gate is claimed. See [docs/testing.md](docs/testing.md) for commands and [docs/verification.md](docs/verification.md) for actual results, gaps and release status.
+The workflow validates PRs/main/manual events, then deploys on `main` only after source/unit, security and BIND jobs pass. It checks out the event commit in each job and publishes `public/` without a build transform. Only deployment receives Pages/OIDC write permissions. No hosted run or protection setting is claimed by this package.
 
-## 9. Planned extension — not implemented
+## 8. Change and recovery
 
-Feature 2 will introduce a default **dnsmasq hosts.d → BIND9 Zone Generator** tab and a separate **BIND → /etc/hosts** tab. Keep BIND grammar in its own module, with explicit supported records/directives, bounded CNAME resolution and independent export state. Do not resolve files or DNS from pasted directives automatically. Agree naming and grouping semantics before implementation; conversion cannot preserve DNS-only information in hosts format.
+All functional roadmap stages are implemented; see [ROADMAP.md](ROADMAP.md). [docs/verification.md](docs/verification.md) separates executed checks from release gaps. Update this document and tests when grammar, naming, limits, state, formats or gates change.
 
-The staged plan, including inherited correctness work and browser-verification review before tabs, is in [ROADMAP.md](ROADMAP.md).
-
-## 10. Maintenance and rollback
-
-Update architecture, tests and changelog together when naming rules, supported ranges, parser grammar, state ownership, exports, network/storage behaviour or CI gates change. Keep proposed features separate from shipped capability.
-
-The package does not deploy itself or modify DNS. Application rollback requires a separately authorised restoration/redeployment of reviewed source; DNS file rollback is an independent operator responsibility. This work records no owner approval to publish parser-sensitive changes and no blanket acceptance of inherited defects.
-
-## References
-
-- [RFC 1035 §5.1 — master-file names and origin](https://www.rfc-editor.org/rfc/rfc1035.html#section-5.1).
-- [RFC 2181 §10 — CNAME and PTR naming](https://www.rfc-editor.org/rfc/rfc2181.html#section-10).
-- [RFC 1982 — serial arithmetic](https://www.rfc-editor.org/rfc/rfc1982.html).
-- [ISC BIND named-checkzone manual](https://bind9.readthedocs.io/en/stable/manpages.html#named-checkzone-zone-file-validation-tool).
+This source remains unreleased. Reverting/redeploying the app requires a separate authorised action; already installed DNS/hosts files have independent state and need their own backup/change process. No owner release approval or blanket security exception is recorded by implementation alone.

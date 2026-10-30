@@ -16,7 +16,8 @@ function scan(target) {
   const scanned = report.paths?.scanned ?? [];
   if (!scanned.length) throw new Error('Semgrep scanned no files; the security gate has not passed.');
   if (target === '.') {
-    for (const file of ['public/assets/js/core.js', 'public/assets/js/ui.js']) {
+    const sources = fs.readdirSync(path.join(ROOT, 'public/assets/js')).filter((file) => file.endsWith('.js')).map((file) => `public/assets/js/${file}`);
+    for (const file of sources) {
       if (!scanned.some((entry) => path.resolve(ROOT, entry) === path.join(ROOT, file))) throw new Error(`Critical source was not scanned: ${file}`);
     }
   }

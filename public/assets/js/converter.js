@@ -1,27 +1,27 @@
-import { analyseRecords, generateForward, generateReverse, parseHosts, reverseZoneFromPrefix } from './core.js';
+import { buildModel, generateForward, generateReverse, parseHosts } from './core.js';
+import { LIMITS, boundedOutput, fail, nextSerial, validateConfig } from './validation.js';
 
-/** A conversion result captures its settings and output together for reliable export. */
 export function convertHosts(input, config, now = new Date()) {
-  const { domain, prefix, dnsHost, adminName, ttl, outputMode } = config;
-  const parsed = parseHosts(input, prefix);
-
+  const settings = validateConfig(config);
+  const parsed = parseHosts(input, settings.network);
+  if (!parsed.records.length) fail('No matching hosts records to convert.', 'no-records');
+  const model = buildModel(parsed.records, settings);
+  const serial = nextSerial(now, settings.previousSerial);
+  const messages = [...parsed.warnings, ...model.warnings];
+  const warnings = messages.slice(0, LIMITS.diagnostics);
+  if (messages.length > LIMITS.diagnostics) warnings.push({ type: 'warn', code: 'diagnostic-limit', message: 'Further warnings omitted; review the input before use.' });
   return {
-    config: { ...config },
-    recordCount: parsed.records.length,
-    warnings: [...parsed.warnings, ...analyseRecords(parsed.records, domain)],
-    forward: generateForward(parsed.records, domain, dnsHost, adminName, ttl, outputMode, now),
-    reverse: generateReverse(parsed.records, domain, dnsHost, adminName, ttl, prefix, now),
-    reverseZone: reverseZoneFromPrefix(prefix)
+    config: { ...settings }, serial, recordCount: parsed.records.length,
+    warnings,
+    forward: boundedOutput(generateForward(model, settings, serial)),
+    reverse: boundedOutput(generateReverse(model, settings, serial)),
+    reverseZone: settings.network.reverseZone
   };
 }
 
 export function exportFile(result, type) {
-  if (type === 'forward') {
-    return {
-      filename: result.config.outputMode === 'zone' ? `db.${result.config.domain || 'zone'}` : 'records.conf',
-      text: result.forward
-    };
-  }
+  if (type === 'forward') return { filename: result.config.outputMode === 'zone' ? `db.${result.config.domain}` : 'records.conf', text: result.forward };
   if (type === 'reverse') return { filename: `db.${result.reverseZone}`, text: result.reverse };
+  if (type === 'hosts' && typeof result.hosts === 'string') return { filename: 'hosts', text: result.hosts };
   throw new TypeError(`Unknown output type: ${type}`);
 }

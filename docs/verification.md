@@ -1,64 +1,102 @@
-# Foundation verification — 30 October 2026
+# Verification — complete roadmap implementation
 
-## Outcome and scope
+Prepared on **30 October 2026**, version **0.2.0-alpha.1**, unreleased/untagged.
 
-Prepared `0.1.0-alpha.1` as an **unreleased, untagged** source package based on GitHub commit `94a83854a5f55997a75726cabd46db4e6c2c96b6`. The six-commit history, empty tag refs and empty GitHub release list were inspected before writing the changelog. No historical release versions were invented.
+## Outcome
 
-Completed the requested foundation stage: a history-based changelog, asset/module separation, favicon and maintained unit tests, with initial SFW delivery/security checks. Feature 2 (tabs and BIND → `/etc/hosts`) remains planned. Profiles B + D apply; the review uses T2 conservatively because parser code and delivery boundaries are involved.
+All three functional roadmap stages are implemented: the existing foundation, DNS correctness fixes and the two-direction tabbed interface. Profiles B + D apply; this is a T2 parser-sensitive change. No push, tag, release, deployment, repository-setting change or production DNS/hosts mutation occurred.
 
-## Files and design
+The previous 0.1.0-alpha.1 suite passed 50 tests before changes. Eleven new correctness regressions were then observed failing against that code; they now pass. Original legacy fixture bytes were preserved, while current tests explicitly assert the corrected/rejected contracts. No failing test was silently disabled or converted into a skip.
 
-| Files | Change |
-| --- | --- |
-| `public/index.html` | Removed inline CSS/scripts/handlers; added local asset references, favicon, export-button state and status feedback. |
-| `public/assets/css/styles.css` | Extracted presentation with small disabled/status styles. |
-| `public/assets/js/core.js` | Extracted original conversion logic with explicit domain/time parameters and no DOM/cache dependency. |
-| `public/assets/js/converter.js` | Added coherent conversion results and filename/content selection. |
-| `public/assets/js/ui.js`, `app.js` | Added event/API adapters and browser setup. |
-| `public/assets/images/favicon.svg` | Added local vector favicon. |
-| `package.json`, `package-lock.json`, `.gitignore` | Added dependency-free Node test commands and development output exclusions. |
-| `tests/unit/*.test.mjs` | Added 50 tests with no skipped/TODO cases. |
-| `tests/fixtures/legacy/*` | Captured nine original-output cases with source-commit and fixed-clock provenance. |
-| `scripts/check-source.mjs`, `check-bind.mjs`, `security-scan.mjs` | Added source checks, independent DNS fixtures and a fail-closed targeted scanner wrapper. |
-| `.semgrep.yml`, `.github/workflows/static.yml` | Added local rules, a synthetic gate test and validation-gated deployment with SHA-pinned actions. |
-| `CHANGELOG.md`, `ARCHITECTURE.md`, `README.md`, `ROADMAP.md` | Added/updated source history, current design, usage and staged extension plan. |
-| `AGENTS.md`, `SECURITY.md`, `docs/engineering/*`, `docs/testing.md`, `docs/known-issues.md`, `docs/threat-model.md`, this file | Added engineering guidance, explicit exception and review evidence. |
+## Executed verification
 
-## Commands and observed results
+Runtime: Node **v24.22.1**, Semgrep **1.183.0**, BIND **9.18.39**.
 
-Authoring runtime: Node `v24.22.1`; installed scanner: Semgrep `1.183.0` in a temporary isolated environment outside the deliverable.
-
-| Check / command | Result | Practical limit |
+| Check | Result | Evidence and boundary |
 | --- | --- | --- |
-| GitHub history/ref/release inspection | PASS | Read-only inspection; no tags/releases created. |
-| `npm ci --ignore-scripts --no-audit --no-fund` | PASS | No npm runtime/dev dependencies. |
-| `npm run check` | PASS | Focused source/syntax checks and all 50 unit tests. Not a full language/style lint suite. |
-| `npm run test:coverage` | PASS | 100% measured lines in the imported core/converter/UI modules, 97.06% branches, 87.80% functions in this run. Browser entry-point execution is outside this measurement. Coverage is not correctness proof. |
-| Nine legacy output comparisons within `npm test` | PASS | Include/full output, comments/filtering, absolute names, duplicates, empty input and three labelled inherited-defect cases. |
-| `SEMGREP=<isolated-path> node scripts/security-scan.mjs --self-test` | PASS | Actual scanner rejected synthetic dynamic-code and fake-credential fixtures. |
-| `SEMGREP=<isolated-path> node scripts/security-scan.mjs` | PASS | Zero findings under four targeted local rules; critical core/UI files were confirmed included. Not comprehensive SAST or secret-history scanning. |
-| YAML parsing and workflow dependency review | PASS | Static validation of configuration; no hosted Actions run occurred. |
-| Temporary Python HTTP-server asset check | PASS | Nested `/public/` URL loaded all six stylesheet/script/favicon assets/imports with appropriate JavaScript MIME types. No browser was launched. |
-| HTML label/document-link checks; favicon XML parse | PASS | Structural checks only; no accessibility compliance claim. |
-| `npm run test:bind` | BLOCKED / prerequisite failure | `named-checkzone` is unavailable. The command exited nonzero rather than skipping; the attempted package installation could not perform the environment's required privilege operations. No BIND parsing result is claimed. |
-| Browser/Playwright, responsive and accessibility E2E | NOT RUN | Playwright CI disabled by owner direction; no browser binaries available locally. See EX-001. |
-| Full dependency audit | N/A for npm graph | Zero npm dependencies; scanner Python transitive dependencies are not hash-locked/audited in this stage. |
-| GitHub Actions execution and branch protection | NOT RUN / unverified | Prepared configuration has not been pushed. |
+| Baseline tests | PASS | Previous 50-test suite before edits; GitHub main still matched `94a8385`. |
+| Pre-fix regressions | Expected FAIL before fix | All 11 correctness tests failed against the old conversion code. They pass now. |
+| `npm ci --ignore-scripts --no-audit --no-fund` | PASS | Dependency-free package/lockfile; no npm runtime/dev dependencies. |
+| `npm run check` | PASS | Focused source checks plus all **141 unit tests**, zero failed/skipped/TODO. |
+| `npm run test:coverage` | PASS | Measured imported production modules: **99.70% lines, 94.48% branches, 97.18% functions**. Browser entry point and tooling are outside this measurement; coverage is not proof of correctness. |
+| Malformed-input corpus | PASS | 400 deterministic inputs passed to each parser: 800 calls, controlled results/errors, no unexpected runtime crashes. |
+| Resource/alias tests | PASS | Byte/line/name/token/depth/expansion limits, cached chains, loops, conflicts and bounded diagnostics. |
+| `npm run test:bind` with `BIND_CHECKZONE` | PASS | Six generated /8,/16,/24 forward/reverse zones, one include-parent zone and one independent reference zone accepted; two deliberately invalid zones rejected. |
+| Importer/BIND differential check | PASS | Same hosts mapping from the original reference zone and BIND canonicalisation. Separate manually written expected hosts fixture also passes. |
+| `node scripts/security-scan.mjs --self-test` | PASS | Actual Semgrep rejected synthetic unsafe code and a fake credential. |
+| `node scripts/security-scan.mjs` | PASS | Zero findings under four targeted rules; every production JS module was confirmed included. Not a comprehensive SAST/history audit. |
+| Static HTML/YAML/SVG/Markdown checks | PASS | Unique IDs, labels, reciprocal tab/panel references, CSP declaration, SVG parsing, workflow/rule YAML and local documentation links. |
+| HTTP asset graph | PASS | Index plus all 11 local stylesheet/script/favicon assets/imports served under a nested `/public/` URL, with JavaScript MIME types. No browser was involved. |
+| Optional `npm run test:browser` | BLOCKED / prerequisite failure | Playwright module loaded, but no usable Chromium executable existed. Browser download attempts returned unusable archives. No browser journey executed. |
+| Browser/a11y/native API matrix | NOT RUN | Suite is implemented for 3 engines × 3 viewports, tabs, actual downloads, simulated clipboard denial, stale/error state, labels, reduced motion and zoom. No visual/native pass is claimed. |
+| Hosted Actions/protection | NOT RUN / unverified | No push occurred; required checks and environment rules need external verification. |
 
-The shell emitted an environment-specific npm `http-proxy` configuration warning; npm commands still completed successfully. No test assertions or scanner severity were weakened to obtain these results.
+BIND was obtained by extracting official Ubuntu packages into a temporary tooling directory without installing system services; package SHA-256 values matched their repository metadata. `BIND_CHECKZONE` and a process-scoped library path selected that temporary executable. No validator binaries or Python scanner environment are included in the source ZIP.
 
-## Findings and operational impact
+The npm shell emitted an environment-specific `http-proxy` warning, while commands exited successfully. The failed browser attempt and its CI exception are recorded in EX-001, not hidden as a passing check.
 
-- A-01–A-07 are inherited correctness/validation debt. They remain open and are tracked in `docs/known-issues.md`; a golden-test pass does not mark them fixed.
-- A-08 is fixed: captured settings prevent stale filename mismatches, blank exports are unavailable, and export failures produce recovery feedback. Regression tests cover the changed paths.
-- A-09 is addressed in source configuration, while hosted enforcement remains unverified. Deployment now depends on all configured validation jobs; branch-required checks still need maintainer configuration/verification.
-- There is no network/storage feature, backend, production DNS mutation or new runtime dependency. The app now needs HTTP/HTTPS locally because its JavaScript uses ES modules.
-- The public artifact remains `public/` only. The source package has not been pushed, published or deployed; no repository settings or production systems were changed.
+## Behaviour, security and operations
 
-## Gate and approval status
+- A-01–A-07 are corrected under the supported format contract: /8,/16,/24 reverse mapping, coherent names/header qualification, complete alias conflicts, explicit serial progression, strict settings/input handling and canonical comparisons.
+- A-08 retains captured metadata and adds strict stale/error export blocking for separate tab states. Invalid conversion clears that tab's previous result; switching tabs preserves the other direction.
+- A-09 is addressed in workflow source: source/unit, targeted-security and independent BIND jobs gate deployment. Hosted enforcement is still unverified.
+- New BIND parsing is a separate module, with logical-token handling, bounded offline aliases, explicit unsupported-data notices and blocked include/generated directives. IPv6, arbitrary CIDR, complete BIND RDATA validation and lossless DNS/hosts round trips are not promised.
+- Text sinks, local assets and a restrictive meta CSP protect the browser boundary at source level. The application introduces no backend, network/persistence feature, runtime dependency, installed-file write or DNS deployment capability.
+- Installed serial state must be supplied after reload or zone changes. Page rollback cannot restore independently installed DNS/hosts files; those need their own change/backup process.
 
-Local source/unit and targeted-security checks passed. Independent BIND execution and real-browser verification have not passed in this authoring environment. The first hosted workflow run is still outstanding. **Do not treat this report as full release readiness.**
+## Gate and release status
 
-EX-001 records only the owner's existing direction to disable Playwright in CI, with a review checkpoint before feature 2 or on 2026-11-30. It is not acceptance of inherited DNS defects or an exception for scanner failures. No external tickets, risk acceptance or owner approval to release selected T2 changes were created by this work.
+Local source/unit, targeted-security and BIND gates passed. Browser execution is **not verified**. The user's standing direction to keep Playwright disabled in CI remains in force; it was revisited before feature 2 and documented with the observed environment failure in [EX-001](engineering/EXCEPTIONS.md). Other controls were not waived.
 
-The application can be rolled back by restoring reviewed source and performing a separately authorised deployment. Installed DNS files are independent of the web app and require their own backups/change process. The next work is to run the prepared hosted checks, review inherited DNS correctness issues and revisit browser coverage before feature 2.
+No owner approval for a selected T2 public release is recorded. This deliverable is reviewable source, not a release-readiness declaration. The remaining steps are real-browser execution on a working machine, the first hosted workflow/protection verification after a separately authorised push, and owner review before publication.
+
+The targeted SAST/credential rule set and scanner supply-chain controls remain limited as described in [testing.md](testing.md), [known-issues.md](known-issues.md) and [threat-model.md](threat-model.md). No external issues, security risk acceptance or blanket exceptions were invented.
+
+## Exact source changes from 0.1.0-alpha.1
+
+The following paths were added or modified; no files were removed. Historical fixture files and the canonical SFW standard remained unchanged.
+
+### Added
+
+- `docs/format-contract.md`
+- `public/assets/js/bind-converter.js`
+- `public/assets/js/bind-parser.js`
+- `public/assets/js/examples.js`
+- `public/assets/js/tabs.js`
+- `public/assets/js/validation.js`
+- `scripts/browser-smoke.mjs`
+- `tests/fixtures/bind/reference.hosts`
+- `tests/fixtures/bind/reference.zone`
+- `tests/fixtures/legacy/README.md`
+- `tests/unit/bind.test.mjs`
+- `tests/unit/reference.test.mjs`
+- `tests/unit/roadmap-regressions.test.mjs`
+- `tests/unit/safety.test.mjs`
+
+### Modified
+
+- `.github/workflows/static.yml`
+- `AGENTS.md`
+- `ARCHITECTURE.md`
+- `CHANGELOG.md`
+- `README.md`
+- `ROADMAP.md`
+- `SECURITY.md`
+- `docs/engineering/EXCEPTIONS.md`
+- `docs/known-issues.md`
+- `docs/testing.md`
+- `docs/threat-model.md`
+- `docs/verification.md`
+- `package-lock.json`
+- `package.json`
+- `public/assets/css/styles.css`
+- `public/assets/js/converter.js`
+- `public/assets/js/core.js`
+- `public/assets/js/ui.js`
+- `public/index.html`
+- `scripts/check-bind.mjs`
+- `scripts/check-source.mjs`
+- `scripts/security-scan.mjs`
+- `tests/unit/converter.test.mjs`
+- `tests/unit/core.test.mjs`
+- `tests/unit/ui.test.mjs`

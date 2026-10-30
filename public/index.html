@@ -3,46 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dnsmasq hosts.d to BIND9 Zone Generator</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <title>DNS Record Converter — BIND9 and hosts</title>
   <link rel="stylesheet" href="./assets/css/styles.css" />
   <link rel="icon" type="image/svg+xml" href="./assets/images/favicon.svg" />
 </head>
 <body>
   <header>
-    <h1>dnsmasq hosts.d → BIND9 Zone Generator</h1>
-    <p>Paste dnsmasq-style host records and generate BIND9 forward + reverse zone content.</p>
+    <h1>DNS Record Converter</h1>
+    <p>Convert hosts records and BIND zones locally in your browser.</p>
   </header>
 
   <main>
+    <nav class="tabs" role="tablist" aria-label="Conversion direction">
+      <button type="button" role="tab" id="tab-forward" aria-selected="true" aria-controls="panel-forward" tabindex="0">dnsmasq hosts.d → BIND9 Zone Generator</button>
+      <button type="button" role="tab" id="tab-hosts" aria-selected="false" aria-controls="panel-hosts" tabindex="-1">BIND → /etc/hosts</button>
+    </nav>
+    <div id="panel-forward" class="converter-panel" role="tabpanel" aria-labelledby="tab-forward">
     <section class="card">
       <div class="grid">
         <div>
           <label for="domain">Forward zone domain</label>
-          <input id="domain" value="safesploit.com" />
+          <input id="domain" maxlength="253" value="safesploit.com" />
           <div class="hint">Example: <code>safesploit.com</code> or <code>example.com</code></div>
         </div>
 
         <div>
-          <label for="networkPrefix">Network prefix filter</label>
-          <input id="networkPrefix" value="172.16." />
-          <div class="hint">Example: <code>172.16.5.</code>. Only matching IPs are parsed.</div>
+          <label for="networkPrefix">IPv4 network / reverse zone</label>
+          <input id="networkPrefix" maxlength="32" value="172.16." />
+          <div class="hint">Supports octet prefixes and aligned /8, /16 or /24 CIDR. Example: <code>172.16.</code> or <code>192.0.2.0/24</code>.</div>
         </div>
 
         <div>
           <label for="dnsHost">Authoritative DNS host</label>
-          <input id="dnsHost" value="dns6" />
-          <div class="hint">Used in SOA/NS as <code>dns6.example.com.</code></div>
+          <input id="dnsHost" maxlength="254" value="dns6" />
+          <div class="hint">Short label or absolute name. Full zones need an A record for an in-zone nameserver.</div>
         </div>
 
         <div>
           <label for="adminName">SOA admin name</label>
-          <input id="adminName" value="admin" />
-          <div class="hint">Used as <code>admin.example.com.</code></div>
+          <input id="adminName" maxlength="254" value="admin" />
+          <div class="hint">DNS mailbox notation, such as <code>admin</code> or <code>hostmaster.example.com.</code>, not an email address.</div>
         </div>
 
         <div>
-          <label for="ttl">TTL</label>
-          <input id="ttl" value="300" />
+          <label for="ttl">TTL (seconds or BIND units)</label>
+          <input id="ttl" maxlength="32" value="300" />
+        </div>
+
+        <div>
+          <label for="previousSerial">Previous SOA serial (optional)</label>
+          <input id="previousSerial" maxlength="10" inputmode="numeric" placeholder="Current installed serial" />
+          <div class="hint">Incremented after each successful generation. Supply the installed serial before applying a change.</div>
         </div>
 
         <div>
@@ -51,14 +64,14 @@
             <option value="include" selected>Include file only: records only</option>
             <option value="zone">Full zone file: SOA/NS + records</option>
           </select>
-          <div class="hint">Use include mode for files like <code>005-critical-prod.conf</code>.</div>
+          <div class="hint">Include output has absolute names and per-record TTLs. Use it inside a zone with <code>$INCLUDE</code>.</div>
         </div>
       </div>
     </section>
 
     <section class="card">
       <label for="hostsInput">Paste hosts.d content</label>
-      <textarea id="hostsInput" spellcheck="false" placeholder="172.16.5.10 ldap1 ldap&#10;172.16.5.18 freeipa-01.ipa ipa-01 ipa&#10;172.16.5.55 pxe iventoy"></textarea>
+      <textarea maxlength="1000000" id="hostsInput" spellcheck="false" placeholder="172.16.5.10 ldap1 ldap&#10;172.16.5.18 freeipa-01.ipa ipa-01 ipa&#10;172.16.5.55 pxe iventoy"></textarea>
       <div class="hint">
         Format: <code>IP primary-host alias1 alias2</code>. Primary hostname becomes an A record. Extra hostnames become CNAMEs by default.
       </div>
@@ -66,6 +79,7 @@
 
     <section class="card">
       <div class="actions">
+        <button type="button" class="secondary" id="exampleForwardButton">Load example</button>
         <button type="button" id="generateButton">Generate BIND9</button>
         <button type="button" class="secondary" id="copyForwardButton" disabled>Copy forward output</button>
         <button type="button" class="secondary" id="copyReverseButton" disabled>Copy reverse output</button>
@@ -98,6 +112,50 @@
         <pre id="reverseOutput"></pre>
       </div>
     </section>
+    </div>
+    <div id="panel-hosts" class="converter-panel" role="tabpanel" aria-labelledby="tab-hosts" hidden>
+      <section class="card">
+        <div class="grid">
+          <div>
+            <label for="bindOrigin">Zone origin (optional if $ORIGIN is present)</label>
+            <input id="bindOrigin" maxlength="253" placeholder="example.com" />
+            <div class="hint">Required for relative owners when the pasted text has no <code>$ORIGIN</code>.</div>
+          </div>
+          <div>
+            <label for="nameStyle">Hosts name format</label>
+            <select id="nameStyle">
+              <option value="both">FQDN and origin-relative names</option>
+              <option value="fqdn">FQDN only</option>
+              <option value="short">Origin-relative names only</option>
+            </select>
+            <div class="hint">Each IP has one deterministic canonical name followed by its aliases.</div>
+          </div>
+        </div>
+      </section>
+      <section class="card">
+        <label for="bindInput">Paste a BIND forward zone or include fragment</label>
+        <textarea id="bindInput" maxlength="1000000" spellcheck="false" placeholder="$ORIGIN example.com.&#10;$TTL 300&#10;app IN A 192.0.2.10&#10;www IN CNAME app"></textarea>
+        <div class="hint">IPv4 A records and CNAME chains are supported. Other record types are reported and omitted. File includes and generated records are blocked.</div>
+      </section>
+      <section class="card">
+        <div class="actions">
+          <button type="button" class="secondary" id="exampleBindButton">Load example</button>
+          <button type="button" id="generateHostsButton">Generate /etc/hosts</button>
+          <button type="button" class="secondary" id="copyHostsButton" disabled>Copy hosts output</button>
+          <button type="button" class="warn" id="downloadHostsButton" disabled>Download hosts</button>
+        </div>
+        <p id="bindStatus" class="hint" role="status" aria-live="polite"></p>
+      </section>
+      <section class="card">
+        <div class="section-title"><h2>Validation / Warnings</h2><span id="bindSummary" class="hint">No generation run yet.</span></div>
+        <ul id="bindWarnings" class="warning-list"></ul>
+      </section>
+      <section class="card">
+        <div class="section-title"><h2>/etc/hosts output</h2></div>
+        <pre id="hostsOutput"></pre>
+        <p class="hint">Review before merging into your hosts file. DNS TTLs, comments, IPv6 and non-host records are not preserved.</p>
+      </section>
+    </div>
   </main>
 
   <script type="module" src="./assets/js/app.js"></script>

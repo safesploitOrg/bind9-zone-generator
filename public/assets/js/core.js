@@ -1,199 +1,92 @@
-// DNS conversion logic. No DOM, storage or network access.
+import { LIMITS, addWarning, absoluteName, fail, inZone, inputText, normalizeIPv4, parseNetwork } from './validation.js';
 
-export function generateSerial(now = new Date()) {
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const hh = String(now.getHours()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}${hh}`;
-}
-
-export function isIPv4(value) {
-  const match = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!match) return false;
-  return match.slice(1).every((octet) => Number(octet) >= 0 && Number(octet) <= 255);
-}
-
-export function isFQDNLike(hostname) {
-  return hostname.includes(".");
-}
-
-export function stripTrailingDot(value) {
-  return value.endsWith(".") ? value.slice(0, -1) : value;
-}
-
-export function ensureAbsoluteName(name, domain) {
-  if (name.endsWith(".")) return name;
-  if (isFQDNLike(name)) return `${name}.`;
-  return `${name}.${domain}.`;
-}
-
-export function bindName(name) {
-  return name;
-}
-
-export function cnameTarget(primary) {
-  if (primary.endsWith(".")) return primary;
-  return primary;
-}
-
-export function reverseZoneFromPrefix(prefix) {
-  const clean = prefix.replace(/\.$/, "");
-  const octets = clean.split(".");
-  if (octets.length !== 3) return "INVALID-PREFIX.in-addr.arpa";
-  return `${octets[2]}.${octets[1]}.${octets[0]}.in-addr.arpa`;
-}
-
-export function zoneHeader(domain, dnsHost, adminName, ttl, now = new Date()) {
-  const serial = generateSerial(now);
-  const ns = ensureAbsoluteName(dnsHost, domain);
-  const admin = ensureAbsoluteName(adminName, domain);
-
-  return `$TTL ${ttl}\n@   IN  SOA ${ns} ${admin} (\n        ${serial} ; serial\n        3600       ; refresh\n        900        ; retry\n        604800     ; expire\n        86400 )    ; minimum\n\n    IN  NS  ${ns}\n\n`;
-}
+export const isIPv4 = (value) => normalizeIPv4(value) !== null;
 
 export function parseHosts(input, prefix) {
+  inputText(input);
+  const network = typeof prefix === 'object' ? prefix : parseNetwork(prefix);
   const records = [];
   const warnings = [];
-  const lines = input.split("\n");
-
-  lines.forEach((rawLine, index) => {
+  for (const [index, raw] of input.split('\n').entries()) {
     const lineNumber = index + 1;
-    let line = rawLine.trim();
-
-    if (!line || line.startsWith("#") || line.startsWith(";")) return;
-
-    line = line.split("#", 1)[0].split(";", 1)[0].trim();
-    if (!line) return;
-
+    const line = raw.split(/[;#]/, 1)[0].trim();
+    if (!line) continue;
     const parts = line.split(/\s+/);
-    if (parts.length < 2) {
-      warnings.push({ type: "warn", message: `Line ${lineNumber}: skipped because it has fewer than 2 fields.` });
-      return;
-    }
-
-    const ip = parts[0];
-    const hostnames = parts.slice(1).filter(Boolean);
-
-    if (!isIPv4(ip)) {
-      warnings.push({ type: "warn", message: `Line ${lineNumber}: skipped invalid IPv4 address: ${ip}` });
-      return;
-    }
-
-    if (!ip.startsWith(prefix)) return;
-
-    records.push({ ip, hostnames, lineNumber });
-  });
-
+    if (parts.length < 2) fail('A hosts row requires an IPv4 address and a primary name.', 'invalid-row', lineNumber);
+    const ip = normalizeIPv4(parts[0]);
+    if (!ip) fail(`Invalid IPv4 address: ${parts[0].slice(0, 100)}`, 'invalid-ip', lineNumber);
+    if (!ip.startsWith(network.prefix)) continue;
+    if (parts.length - 1 > LIMITS.namesPerRow) fail('Too many hostnames on one row.', 'name-limit', lineNumber);
+    if (parts[0] !== ip) addWarning(warnings, `IPv4 address normalised as decimal to ${ip}.`, 'normalised-ip', lineNumber, 'info');
+    records.push({ ip, hostnames: parts.slice(1), lineNumber });
+    if (records.length > LIMITS.records) fail('Too many hosts records.', 'record-limit', lineNumber);
+  }
   return { records, warnings };
 }
 
-export function analyseRecords(records, domain) {
+export function buildModel(records, config) {
+  if (records.reduce((count, record) => count + record.hostnames.length, 0) > LIMITS.records) fail('Too many hostname tokens.', 'name-limit');
+  const addresses = new Map();
+  const aliases = new Map();
+  const ptr = new Map();
   const warnings = [];
-  const nameToIps = new Map();
-  const ipToNames = new Map();
-
-  records.forEach((record) => {
-    if (!ipToNames.has(record.ip)) ipToNames.set(record.ip, []);
-    ipToNames.get(record.ip).push(...record.hostnames);
-
-    record.hostnames.forEach((name) => {
-      const key = stripTrailingDot(name);
-      if (!nameToIps.has(key)) nameToIps.set(key, new Set());
-      nameToIps.get(key).add(record.ip);
-    });
-  });
-
-  nameToIps.forEach((ips, name) => {
-    if (ips.size > 1) {
-      warnings.push({
-        type: "warn",
-        message: `Hostname '${name}' appears on multiple IPs: ${Array.from(ips).join(", ")}. This may be intended round-robin, but aliases should not be CNAMEs in that case.`
-      });
-    }
-  });
-
-  ipToNames.forEach((names, ip) => {
-    const uniqueNames = Array.from(new Set(names));
-    if (uniqueNames.length > 1) {
-      warnings.push({
-        type: "info",
-        message: `IP ${ip} has multiple names: ${uniqueNames.join(", ")}. Reverse DNS will use the first primary hostname only.`
-      });
-    }
-  });
-
-  records.forEach((record) => {
-    record.hostnames.forEach((name) => {
-      if (isFQDNLike(name) && !name.endsWith(".")) {
-        warnings.push({
-          type: "info",
-          message: `Name '${name}' contains a dot. In BIND this is relative unless you add a trailing dot. It will become '${name}.${domain}'.`
-        });
-      }
-    });
-  });
-
-  return warnings;
-}
-
-export function generateForward(records, domain, dnsHost, adminName, ttl, outputMode, now = new Date()) {
-  let output = "";
-
-  if (outputMode === "zone") {
-    output += zoneHeader(domain, dnsHost, adminName, ttl, now);
+  const canonical = (name, lineNumber) => {
+    let value;
+    try { value = absoluteName(name, config.origin, { autoFqdn: true }); }
+    catch (error) { fail(error.message, error.code, lineNumber); }
+    if (!inZone(value, config.origin)) fail(`Name '${value}' is outside the forward zone.`, 'out-of-zone', lineNumber);
+    return value;
+  };
+  const normalized = records.map((record) => ({ ...record, hostnames: record.hostnames.map((name) => canonical(name, record.lineNumber)) }));
+  for (const record of normalized) {
+    const primary = record.hostnames[0];
+    if (!addresses.has(primary)) addresses.set(primary, new Set());
+    addresses.get(primary).add(record.ip);
+    if (!ptr.has(record.ip)) ptr.set(record.ip, primary);
+    else if (ptr.get(record.ip) !== primary) addWarning(warnings, `IP ${record.ip} uses first primary ${ptr.get(record.ip)} for PTR.`, 'ptr-first-primary', record.lineNumber, 'info');
   }
-
-  output += `; ================================\n; Generated BIND9 Records\n; Primary hostname = A record\n; Additional names = CNAME records\n; ================================\n\n`;
-
-  const emittedA = new Set();
-  const emittedCname = new Set();
-  const namesWithA = new Set();
-
-  records.forEach((record) => {
-    const primary = bindName(record.hostnames[0]);
-    const primaryKey = stripTrailingDot(primary);
-
-    if (!emittedA.has(`${primaryKey}:${record.ip}`)) {
-      output += `${primary.padEnd(32)} IN       A        ${record.ip}\n`;
-      emittedA.add(`${primaryKey}:${record.ip}`);
-      namesWithA.add(primaryKey);
+  for (const record of normalized) {
+    const primary = record.hostnames[0];
+    for (const alias of new Set(record.hostnames.slice(1))) {
+      if (alias === primary) continue;
+      if (alias === config.origin || addresses.has(alias)) fail(`CNAME alias '${alias}' conflicts with an A or zone-apex owner.`, 'cname-conflict', record.lineNumber);
+      if (aliases.has(alias) && aliases.get(alias) !== primary) fail(`CNAME alias '${alias}' has conflicting targets.`, 'cname-conflict', record.lineNumber);
+      aliases.set(alias, primary);
     }
-
-    record.hostnames.slice(1).forEach((alias) => {
-      const aliasKey = stripTrailingDot(alias);
-      const target = cnameTarget(primary);
-
-      if (aliasKey === primaryKey) return;
-      if (namesWithA.has(aliasKey)) return;
-      if (emittedCname.has(aliasKey)) return;
-
-      output += `${alias.padEnd(32)} IN       CNAME    ${target}\n`;
-      emittedCname.add(aliasKey);
-    });
-
-    output += "\n";
-  });
-
-  return output.trimEnd() + "\n";
+  }
+  if (aliases.has(config.dnsHost)) fail('Authoritative DNS host must not be a CNAME alias.', 'ns-alias');
+  if (config.outputMode === 'zone' && inZone(config.dnsHost, config.origin) && !addresses.has(config.dnsHost)) fail('Full zone requires an A record for the in-zone authoritative DNS host.', 'missing-ns-address');
+  return { addresses, aliases, ptr, warnings };
 }
 
-export function generateReverse(records, domain, dnsHost, adminName, ttl, prefix, now = new Date()) {
-  const reverseZone = reverseZoneFromPrefix(prefix);
-  let output = zoneHeader(reverseZone, dnsHost + "." + domain, adminName + "." + domain, ttl, now);
+export function zoneHeader(origin, config, serial) {
+  return `$ORIGIN ${origin}\n$TTL ${config.ttl}\n@ IN SOA ${config.dnsHost} ${config.adminName} (\n    ${serial} ; serial\n    3600 ; refresh\n    900 ; retry\n    604800 ; expire\n    86400 ) ; negative cache TTL\n@ IN NS ${config.dnsHost}\n\n`;
+}
 
-  output += `; ================================\n; Generated PTR Records\n; Reverse Zone: ${reverseZone}\n; ================================\n\n`;
+export function generateForward(model, config, serial) {
+  const lines = [];
+  if (config.outputMode === 'zone') lines.push(zoneHeader(config.origin, config, serial).trimEnd());
+  lines.push('; Generated A and CNAME records; names are absolute.');
+  const ttl = config.outputMode === 'include' ? `${config.ttl} ` : '';
+  for (const name of [...model.addresses.keys()].sort()) {
+    for (const ip of [...model.addresses.get(name)].sort(compareIPs)) lines.push(`${name.padEnd(40)} ${ttl}IN A ${ip}`);
+  }
+  for (const alias of [...model.aliases.keys()].sort()) lines.push(`${alias.padEnd(40)} ${ttl}IN CNAME ${model.aliases.get(alias)}`);
+  return lines.join('\n') + '\n';
+}
 
-  const emitted = new Set();
+export function compareIPs(a, b) {
+  const left = a.split('.').map(Number);
+  const right = b.split('.').map(Number);
+  for (let index = 0; index < 4; index += 1) if (left[index] !== right[index]) return left[index] - right[index];
+  return 0;
+}
 
-  records.forEach((record) => {
-    if (emitted.has(record.ip)) return;
-    emitted.add(record.ip);
-
-    const lastOctet = record.ip.split(".").pop();
-    const primary = ensureAbsoluteName(record.hostnames[0], domain);
-    output += `${lastOctet.padEnd(8)} IN       PTR      ${primary}\n`;
-  });
-
-  return output.trimEnd() + "\n";
+export function generateReverse(model, config, serial) {
+  const lines = [zoneHeader(`${config.network.reverseZone}.`, config, serial).trimEnd(), '; Generated PTR records; first primary name per address.'];
+  for (const ip of [...model.ptr.keys()].sort(compareIPs)) {
+    const owner = ip.split('.').slice(config.network.octets.length).reverse().join('.');
+    lines.push(`${owner.padEnd(16)} IN PTR ${model.ptr.get(ip)}`);
+  }
+  return lines.join('\n') + '\n';
 }

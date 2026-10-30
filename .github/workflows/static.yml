@@ -69,7 +69,8 @@ jobs:
 
   # Playwright CI is intentionally DISABLED by owner request on 2026-10-30.
   # See docs/engineering/EXCEPTIONS.md (EX-001). No hidden browser installation.
-  # Revisit before feature 2: Chromium/Firefox/WebKit, keyboard and responsive flows.
+  # Revisited for feature 2: a local nine-combination browser suite is provided,
+  # but CI execution remains disabled under the owner's standing instruction.
   # Enable the future browser job and add it to deploy.needs together.
 
   deploy:

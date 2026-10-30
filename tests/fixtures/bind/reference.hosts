@@ -1,0 +1,7 @@
+# Generated from pasted BIND records; IPv4 only.
+# DNS TTLs, comments and non-host records are not preserved.
+192.0.2.10       app.example.com app portal.example.com portal www.example.com www
+192.0.2.11       app.example.com app portal.example.com portal www.example.com www
+192.0.2.20       db.example.com db
+192.0.2.30       cache.sub.example.com cache.sub
+192.0.2.53       ns1.example.com ns1

@@ -1,35 +1,46 @@
-# Roadmap
+# Roadmap — implementation status
 
-## Stage 1 — prepared in 0.1.0-alpha.1
+Prepared version: **0.2.0-alpha.1**, unreleased and untagged. All three functional stages are implemented. Verification gaps are recorded explicitly rather than treated as passing gates.
 
-- Historical changelog with honest version provenance.
-- Static asset separation, local favicon, pure conversion functions and unit tests.
-- SFW entry point, known-issue tracking and validation-gated Pages workflow.
-- Playwright CI remains disabled by owner direction.
+## Stage 1 — foundation implemented
 
-This is a reviewable, unreleased source package. See `docs/verification.md` for executed checks.
+- [x] Reconstruct dated, unversioned history from all six commits without inventing historical releases.
+- [x] Separate static assets under `public/assets/css`, `js` and `images`; include a local favicon.
+- [x] Add pure conversion modules, maintained tests, SFW guidance and validation-gated CI.
+- [x] Preserve the owner's instruction to keep Playwright disabled in CI.
 
-## Stage 2 — correctness before another parser
+## Stage 2 — DNS correctness implemented
 
-Address the inherited DNS issues in `docs/known-issues.md`, especially A-01 through A-04 and A-06. Agree supported naming rules, network ranges and blocking-versus-advisory validation. Add failing regression tests before each fix, and validate supported generated zones independently using BIND.
+- [x] Support octet-aligned `/8`, `/16` and `/24` prefixes/CIDR with correct reverse owners.
+- [x] Canonicalise names and IPv4 text; reject out-of-zone owners and conflicting CNAME data.
+- [x] Align forward/PTR and SOA/NS naming, explicit origins and include TTLs.
+- [x] Validate names, settings and serials; increment a supplied previous serial with 32-bit wrap.
+- [x] Block malformed, empty and oversized conversions; bound parsing/generation work.
+- [x] Add regressions that failed before the fixes and independent BIND verification that passes afterwards.
+- [x] Revisit EX-001 before feature 2: attempted local browser installation/execution; CI remains disabled under the standing direction.
 
-Revisit EX-001 and browser verification before introducing tabs. No automatic approval or release is implied by this roadmap.
+A-01–A-08 are addressed under the documented supported-format contracts. A-09 is addressed in workflow source; hosted required checks still need external verification.
 
-## Stage 3 — feature 2, proposed target 0.2.0-alpha.1
+## Stage 3 — bidirectional interface implemented
 
-Add an accessible tab interface:
+- [x] Default **dnsmasq hosts.d → BIND9 Zone Generator** tab.
+- [x] **BIND → /etc/hosts** tab with separate settings, state, warnings, output and exports.
+- [x] `$ORIGIN`, `$TTL`, inherited owners, TTL/class ordering, comments, quoted data and multiline records.
+- [x] IPv4 A records and bounded offline CNAME-chain resolution; clear warnings for other records, missing targets and out-of-zone data.
+- [x] Deterministic one-line-per-IP grouping and FQDN/origin-relative/both output formats.
+- [x] Reject loops/conflicts, file includes and generated records; no DNS lookups or file reads.
+- [x] Roving tab focus, arrow/Home/End navigation, responsive CSS, status messages and independent stale/error handling.
+- [x] Examples, unit/UI-adapter tests, reference fixtures, source checks and security checks.
+- [x] Provide a reusable local nine-combination browser suite without enabling it in CI.
 
-1. **dnsmasq hosts.d → BIND9 Zone Generator** — selected by default, preserving the existing converter.
-2. **BIND → /etc/hosts** — a separate conversion mode with its own input, settings, output and warnings.
+## Verification still outstanding
 
-Before implementation, specify:
+- [ ] Execute the browser matrix on a machine with usable Chromium/Firefox/WebKit binaries. The authoring download returned unusable archives, so no real-browser result is claimed.
+- [ ] Verify the first hosted GitHub Actions run, repository-required checks and environment protection after a separately authorised push.
+- [ ] Obtain owner review before tagging or publishing this parser-sensitive change.
 
-- Accepted BIND syntax: `$ORIGIN`, `$TTL`, inherited owners, multiline records and comments.
-- Whether the first version handles IPv4 A records only, with clear warnings for unsupported AAAA and other types.
-- CNAME resolution, aliases, chains, missing targets, loops and out-of-zone names.
-- Deterministic grouping of `IP canonical-name aliases`, deduplication and short/FQDN output policy.
-- No automatic `$INCLUDE` file reads or network lookups; unsupported directives must be reported safely.
-- Limits for input size, records, alias expansion and processing work.
-- Keyboard navigation, ARIA tab semantics, mobile layout and export-state separation.
+These items are release/verification steps, not unimplemented conversion features. This source package does not authorise a deployment.
 
-Keep the BIND parser in a separate module; do not mix BIND grammar into the hosts-file parser. Do not promise round-trip identity: comments, TTLs, SOA/NS records and other DNS semantics cannot all be represented by `/etc/hosts`.
+## Deliberate boundaries
+
+IPv6/AAAA output, arbitrary CIDR/classless reverse delegation, general-purpose BIND syntax, automatic `$INCLUDE` resolution, network lookups and lossless round-trip conversion are outside this version. See [docs/format-contract.md](docs/format-contract.md). These boundaries replace the earlier open questions with explicit supported behaviour.

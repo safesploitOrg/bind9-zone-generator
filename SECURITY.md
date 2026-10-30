@@ -1,23 +1,34 @@
 # Security
 
-## Runtime and privacy
+## Runtime model
 
-The application converts pasted records locally in the browser. Its source has no API fetches, telemetry, third-party runtime scripts or browser persistence. Hosting may still retain ordinary request logs. Clipboard copies and downloads intentionally create copies outside the page.
+Both conversion directions process pasted text locally. Production modules contain no fetch/XHR/WebSocket, telemetry, third-party assets or browser persistence. Hosting may retain ordinary request logs; extensions and user-created clipboard/download copies are outside the app's retention control.
 
-Outputs and warnings use `textContent`/element creation. No code execution, HTML interpretation, DNS lookup, filesystem include resolution or DNS-server access is required for conversion. There is no backend, authentication/session system, database or deployment credential in the page.
+The HTML declares a meta CSP: local scripts/styles/images, `connect-src 'none'`, blocked objects/forms/base URLs and `no-referrer`. No inline scripts/handlers or HTML insertion are required. Hosting response headers and browser-native CSP enforcement were not verified here; frame-ancestor policy requires hosting headers and is not claimed.
 
-The application is a text generator, not an authoritative DNS validator. Known configuration defects are listed in [docs/known-issues.md](docs/known-issues.md). Review generated content with `named-checkzone` in the intended zone context and manage installed serials before applying changes. Never install output automatically based only on “No warnings detected”.
+There is no backend, authentication/session system, database, secret store or DNS/hosts installation authority. The downloaded hosts file must be reviewed and merged manually. Generated DNS requires independent checking and correct installed serial state before application.
 
-## Maintenance and findings
+## Input and output protections
 
-Follow SFW v1.1.0. Block releases for exposed credentials, active exploitation, confirmed reachable Critical vulnerabilities and newly introduced reachable High findings. Triage other findings using severity, reachability, exposure, fix availability and legacy/new status; record an owner, mitigation and review deadline rather than silently suppressing them. All configured local scanner findings currently fail CI; custom rules are deliberately limited in scope.
+- Strict supported naming/settings rules, decimal IPv4 normalisation and complete conflict indexes.
+- Bounded input, logical records/tokens, names, alias depth/work, diagnostics and output; see [format contract](docs/format-contract.md).
+- Structured fatal errors clear that tab's output and prevent export. Edits disable export until regeneration.
+- Separate BIND grammar; quoted data is tokenised before records, and file includes/generated directives are blocked without I/O.
+- Offline iterative CNAME resolution detects loops/conflicts and warns about missing targets. No invented address or network resolution.
+- Text-only rendering and per-tab captured metadata. Download URLs/anchors are released and clipboard/download failures are handled.
 
-The owner has explicitly disabled Playwright in CI for this stage; see [EX-001](docs/engineering/EXCEPTIONS.md). This does not waive security scans, correctness checks or release review.
+The BIND importer validates its supported grammar and mappings, not every non-host RDATA field or DNSSEC property. IPv6 and arbitrary CIDR/classless delegation are unsupported. This is not a DNS authority, universal validator or lossless round-trip tool.
 
-Do not place confidential inventory, credentials or exploit details in public GitHub issues. Use GitHub's private vulnerability reporting route if the repository owner has enabled it. Its enabled status was not verified during this work; no private contact channel is invented here.
+## Verification and release controls
 
-## Hosting and changes
+Follow SFW v1.1.0. Source/unit, targeted-security and independent BIND jobs gate deployment in the prepared workflow. The security wrapper fails on configured findings, unreadable/error reports or missed production JS files; its synthetic test verifies failure behaviour without printing matched credentials. Four local rules are intentionally limited; comprehensive SAST, full secret-history scanning and scanner dependency locking/auditing remain improvements.
 
-Use HTTPS hosting. Relative local assets support GitHub Pages project paths. External scripts/styles and event listeners remove the previous dependency on inline execution, but no CSP or live hosting-header verification is claimed by this change.
+Playwright CI remains disabled under the owner's standing [EX-001](docs/engineering/EXCEPTIONS.md). The optional local matrix could not execute because usable browser binaries were unavailable. Adapter tests do not establish browser/a11y compliance.
 
-DNS configuration remains a manual hand-off. No production DNS changes, repository permission changes, push, tag, release or deployment are authorised by this source package. A parser-sensitive public release requires the owner's recorded review and relevant verification evidence.
+Block releases for exposed credentials, active exploitation, confirmed reachable Critical vulnerabilities and newly introduced reachable High findings. Triage other findings using severity, reachability, exposure, fix availability and legacy/new status. Record an owner, mitigation and review date rather than silently suppressing controls. No risk acceptance or public-release approval is granted by the agent.
+
+No push, tag, permission change or deployment occurred. Hosted branch-required checks and environment rules remain unverified. See [verification](docs/verification.md), [issue status](docs/known-issues.md) and [threat model](docs/threat-model.md).
+
+## Reporting
+
+Do not post confidential inventory, credentials or exploit details in public issues. Use GitHub private vulnerability reporting if the owner has enabled it; enabled status is unverified and no private contact channel is invented here.

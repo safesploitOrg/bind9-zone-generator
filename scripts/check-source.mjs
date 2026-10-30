@@ -17,6 +17,7 @@ function files(directory) {
 function main() {
   const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /<style\b|\bon\w+\s*=/i, 'Keep CSS and event handlers external');
+  assert.match(html, /connect-src 'none'/, 'Conversion must not require outbound connections');
   const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)];
   assert.equal(scripts.length, 1);
   assert.match(scripts[0][1], /type="module"/);

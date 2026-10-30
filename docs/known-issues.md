@@ -1,19 +1,29 @@
-# Known issues
+# Issue status — 0.2.0-alpha.1
 
-Baseline: [`94a8385`](https://github.com/safesploitOrg/bind9-zone-generator/commit/94a83854a5f55997a75726cabd46db4e6c2c96b6), reviewed 2026-10-30. These issues pre-date the asset/test refactor. IDs are local tracking references, not GitHub tickets. The project maintainer owns triage; suggested review checkpoint: 2026-11-30 and before feature 2. No security risk acceptance or release approval is implied.
+Original baseline: [`94a8385`](https://github.com/safesploitOrg/bind9-zone-generator/commit/94a83854a5f55997a75726cabd46db4e6c2c96b6). IDs are document-local references, not external GitHub tickets. The maintainer owns triage; no public release or blanket risk acceptance is implied.
 
-| ID | Status | Reproduction / impact | Current mitigation and next action |
-| --- | --- | --- | --- |
-| A-01 | Open; DNS correctness | Default `172.16.` filter produces `INVALID-PREFIX.in-addr.arpa`; PTR owners use only the final octet across a broad range. | For supported use, select one three-octet prefix ending in a dot, such as `192.0.2.`. Separate network selection from reverse-zone generation before supporting wider ranges. |
-| A-02 | Open; DNS correctness | An alias can be emitted as a CNAME before a later row emits an A record for the same owner. | Avoid conflicting aliases; check complete output with BIND. Build a complete owner index before emission. |
-| A-03 | Open; DNS correctness | `app.internal` is relative in forward output but becomes absolute `app.internal.` in PTR output. | Use short names or explicit absolute names belonging to the intended zone. Define one canonical naming model. |
-| A-04 | Open; DNS correctness | Reverse SOA/NS settings append the forward domain even if DNS host/admin are already qualified. | Use short host/admin labels for now. Reuse one absolute-name policy for both header paths. |
-| A-05 | Open; operational correctness | `YYYYMMDDHH` serial repeats within the hour and does not inspect the installed serial. | Operators must manage serial progression before installation. One timestamp per run now aligns forward/reverse headers, but does not solve monotonicity. |
-| A-06 | Open; validation gap | Invalid names and TTL/settings can reach generated DNS text; warnings are advisory. Input/work limits are absent. | Independently validate complete files before installation. Add bounded parsing and structured blocking errors in a dedicated correctness change. |
-| A-07 | Open; normalisation | Case-sensitive name comparisons, trailing-dot deduplication and leading-zero IP text can miss conflicts or drop distinct names. | Review output; implement DNS-aware canonical comparison keys without changing presentation unexpectedly. |
-| A-08 | Fixed in prepared alpha | Changing the output selector could give old include output a full-zone filename; blank exports were possible. | Exports use captured generation settings, are unavailable before generation and have regression tests. |
-| A-09 | Source configuration addressed; hosted enforcement unverified | Original CI only deployed; it did not run tests or scanners. | Prepared workflow gates deployment on source/unit, targeted security and BIND jobs. First hosted run and branch-protection requirements still need maintainer verification. |
+| ID | Status | Resolution / evidence |
+| --- | --- | --- |
+| A-01 | Fixed for supported networks | `/8`, `/16`, `/24` descriptors derive both reverse zones and owners. The existing `172.16.` default now works. Regressions and BIND checks cover all three sizes. |
+| A-02 | Fixed | Complete primary indexing rejects alias/A collisions and conflicting CNAME targets in either input order. Importer also checks incompatible owner data and loops. |
+| A-03 | Fixed | Consistent canonical names across A/CNAME/PTR; dotted-relative hosts expand under the chosen domain. BIND input deliberately retains strict DNS origin rules. |
+| A-04 | Fixed | Header names are canonicalised once; qualified DNS host/admin names do not receive the domain twice. |
+| A-05 | Addressed by explicit serial contract | UTC seed plus supplied previous-serial increment/wrap. UI advances after successful runs; installed serial must be supplied after reload or zone changes. No automatic DNS query/persistence is promised. |
+| A-06 | Fixed within supported grammar | Invalid settings/names/rows and empty results block export; input, record, token, alias/work and output limits are enforced. This is not a general-purpose BIND validator. |
+| A-07 | Fixed | Names compare as canonical lowercase absolute values; IPv4 text is decimal-normalised before matching and deduplication. |
+| A-08 | Fixed | Captured metadata, per-tab state, disabled stale exports, cleared error output and export-failure handling have regression tests. |
+| A-09 | Source addressed; hosted verification open | Unit/source, security and BIND jobs gate deployment in one workflow. Hosted required checks and environment rules need verification after an authorised push. |
 
-The legacy golden tests deliberately preserve A-01/A-02/A-03 outputs so the extraction is reviewable. Their names state that they are **compatibility checks, not correctness assertions**. Fix each defect with a dedicated regression test and update the corresponding golden case with an explanation; do not suppress a new failing test.
+## Remaining verification and deliberate limits
 
-This register identifies correctness and validation debt. It does not assign unsupported CVSS scores or assert that any item is a confirmed remote exploit. Review severity, reachability, exposure and operational impact before a public release.
+| ID | Status | Scope / next step |
+| --- | --- | --- |
+| V-01 | Open; browser execution | Optional local suite is implemented, but browser download archives were unusable and executables were unavailable. Run the matrix on a working machine. Playwright remains disabled in CI by EX-001. |
+| V-02 | Open; hosted/release evidence | No push, tag, workflow run or deployment occurred. Verify hosted gates and obtain owner review before a parser-sensitive public release. |
+| V-03 | Initial security coverage | Four local SAST/credential rules are targeted, not comprehensive. Full secret-history scanning, scanner dependency locking/auditing and wider SAST remain maintenance improvements. |
+
+Maintainer review checkpoint: 2026-11-30, and before public release for relevant gaps. No external tickets, CVSS scores, security acceptance or release approval were invented.
+
+IPv6, arbitrary CIDR/classless reverse delegation, arbitrary BIND extensions, file includes, DNS lookups and lossless round-trip conversion are deliberate unsupported capabilities, specified in [format-contract.md](format-contract.md). Unknown/unsupported data is rejected or explicitly reported under that contract.
+
+Legacy fixture bytes remain historical evidence. Current migration tests demonstrate that defective cases are corrected or rejected; they no longer assert the old defects as correct output.
