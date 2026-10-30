@@ -1,0 +1,6 @@
+[
+  {
+    "type": "info",
+    "message": "IP 192.0.2.10 has multiple names: app, www. Reverse DNS will use the first primary hostname only."
+  }
+]

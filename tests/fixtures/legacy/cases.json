@@ -1,0 +1,133 @@
+{
+  "sourceCommit": "94a83854a5f55997a75726cabd46db4e6c2c96b6",
+  "localTime": [
+    2026,
+    4,
+    5,
+    12,
+    0,
+    0
+  ],
+  "cases": [
+    {
+      "name": "include-aliases",
+      "input": "192.0.2.10 app www portal\n192.0.2.53 ns1",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "recordCount": 2
+    },
+    {
+      "name": "full-zone",
+      "input": "192.0.2.10 app www\n192.0.2.53 ns1",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "zone"
+      },
+      "recordCount": 2
+    },
+    {
+      "name": "comments-filtering",
+      "input": "# title\n; title\n192.0.2.10 app # comment\n198.51.100.10 outside\n192.0.2.999 invalid\n192.0.2.20\n192.0.2.30 db ; comment",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "recordCount": 2
+    },
+    {
+      "name": "absolute-names",
+      "input": "192.0.2.10 app.example.com. www.example.com.",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "recordCount": 1
+    },
+    {
+      "name": "duplicate-rows",
+      "input": "192.0.2.10 app www\n192.0.2.10 app www\n192.0.2.10 other",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "recordCount": 3
+    },
+    {
+      "name": "empty",
+      "input": "# empty",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "recordCount": 0
+    },
+    {
+      "name": "known-cname-conflict",
+      "input": "192.0.2.10 app shared\n192.0.2.20 shared",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "knownIssue": "A-02",
+      "recordCount": 2
+    },
+    {
+      "name": "known-dotted-name",
+      "input": "192.0.2.10 app.internal www.internal",
+      "config": {
+        "domain": "example.com",
+        "prefix": "192.0.2.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "knownIssue": "A-03",
+      "recordCount": 1
+    },
+    {
+      "name": "known-default-prefix",
+      "input": "172.16.5.10 app\n172.16.6.10 other",
+      "config": {
+        "domain": "example.com",
+        "prefix": "172.16.",
+        "dnsHost": "ns1",
+        "adminName": "hostmaster",
+        "ttl": "300",
+        "outputMode": "include"
+      },
+      "knownIssue": "A-01",
+      "recordCount": 2
+    }
+  ]
+}

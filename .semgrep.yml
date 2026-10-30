@@ -1,0 +1,27 @@
+rules:
+  - id: no-eval
+    languages: [javascript]
+    severity: ERROR
+    message: Do not evaluate untrusted text as JavaScript.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: no-html-insertion
+    languages: [javascript]
+    severity: ERROR
+    message: Use textContent and element creation for user-controlled content.
+    pattern-either:
+      - pattern: $ELEMENT.innerHTML = $VALUE
+      - pattern: $ELEMENT.outerHTML = $VALUE
+      - pattern: $ELEMENT.insertAdjacentHTML(...)
+      - pattern: document.write(...)
+  - id: credential-token
+    languages: [generic]
+    severity: ERROR
+    message: Potential credential; remove and investigate without exposing the value.
+    pattern-regex: '\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{70,}|AKIA[A-Z0-9]{16})\b'
+  - id: private-key-material
+    languages: [generic]
+    severity: ERROR
+    message: Private key material must not be committed.
+    pattern-regex: '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'

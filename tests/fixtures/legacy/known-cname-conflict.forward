@@ -1,0 +1,10 @@
+; ================================
+; Generated BIND9 Records
+; Primary hostname = A record
+; Additional names = CNAME records
+; ================================
+
+app                              IN       A        192.0.2.10
+shared                           IN       CNAME    app
+
+shared                           IN       A        192.0.2.20

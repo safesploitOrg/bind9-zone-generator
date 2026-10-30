@@ -1,0 +1,14 @@
+[
+  {
+    "type": "info",
+    "message": "IP 192.0.2.10 has multiple names: app.internal, www.internal. Reverse DNS will use the first primary hostname only."
+  },
+  {
+    "type": "info",
+    "message": "Name 'app.internal' contains a dot. In BIND this is relative unless you add a trailing dot. It will become 'app.internal.example.com'."
+  },
+  {
+    "type": "info",
+    "message": "Name 'www.internal' contains a dot. In BIND this is relative unless you add a trailing dot. It will become 'www.internal.example.com'."
+  }
+]

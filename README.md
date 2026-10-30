@@ -1,61 +1,77 @@
-# DNSmasq hosts.d to BIND9 Zone Generator
+# dnsmasq hosts.d → BIND9 Zone Generator
 
-A simple web-based tool to convert dnsmasq-style host records from `hosts.d` files into BIND9 forward and reverse zone files. Perfect for migrating DNS configurations from dnsmasq to BIND9 or generating zone files for internal networks.
+A static browser tool for converting pasted `IP primary-name aliases` records into BIND9 forward/include and reverse-zone text. Conversion runs locally; no API, database, tracking or runtime dependencies are used.
 
-## ✨ Features
+**Prepared version:** `0.1.0-alpha.1` — unreleased, untagged. Historical commits were unversioned; see [CHANGELOG.md](CHANGELOG.md).
 
-- **Input Parsing**: Paste dnsmasq-style host records (format: `IP primary-host alias1 alias2`)
-- **Network Filtering**: Only process records matching a specified network prefix
-- **Forward Zone Generation**:
-  - Option for full zone file (with SOA/NS records) or include file (records only)
-  - Primary hostname becomes A record
-  - Additional hostnames become CNAME records
-- **Reverse Zone Generation**: Automatic PTR records for reverse DNS
-- **Validation & Warnings**: Detects potential issues like duplicate hostnames, invalid IPs, etc.
-- **Copy & Download**: Easy export of generated zone files
-- **Customizable**: Configure domain, TTL, DNS host, admin name, and more
+## Run locally
 
-## 📖 Usage
+From the repository root:
 
-1. **Configure Settings**:
-   - **Forward zone domain**: Your domain (e.g., `example.com`)
-   - **Network prefix filter**: IP prefix to match (e.g., `192.168.1.`)
-   - **Authoritative DNS host**: Name for SOA/NS records
-   - **SOA admin name**: Admin contact for SOA
-   - **TTL**: Time-to-live for records
-   - **Output mode**: Choose between full zone file or include file
+```bash
+python3 -m http.server 8000 --bind 127.0.0.1 --directory public
+```
 
-2. **Paste Host Records**:
-   - Enter dnsmasq-style entries, one per line
-   - Format: `IP primary-hostname alias1 alias2`
-   - Example:
-     ```
-     192.168.1.10 server1 srv1
-     192.168.1.20 webserver www
-     ```
+Open <http://127.0.0.1:8000>. No build or npm install is needed to run the page. Serve it over HTTP/HTTPS: double-clicking `index.html` as a `file://` URL is not supported after the move to ES modules. GitHub Pages project paths are supported through relative asset URLs.
 
-3. **Generate Zones**:
-   - Click "Generate BIND9" to create forward and reverse zone files
-   - Review validation warnings if any
-   - Copy or download the output
+## Use
 
-4. **Output**:
-   - **Forward Zone**: A records for primary hosts, CNAMEs for aliases
-   - **Reverse Zone**: PTR records for reverse DNS lookup
+1. Configure the forward domain, prefix, authoritative DNS host, SOA admin label, TTL and output mode.
+2. Paste hosts records, for example:
 
-## 🤝 Contributing
+   ```text
+   192.0.2.10 app www portal
+   192.0.2.53 ns1
+   ```
 
-Contributions welcome! This is a simple static site, so:
+3. For this example, use domain `example.com`, prefix `192.0.2.`, DNS host `ns1` and admin label `hostmaster`.
+4. Generate and review both outputs and warnings, then copy or download.
 
-1. Fork the repository
-2. Make your changes to `index.html`
-3. Test locally
-4. Submit a pull request
+Primary names become A records; additional names become CNAMEs. Reverse output uses the first primary name per IP. Include mode produces a zone-file fragment without a header, intended for `$INCLUDE` inside a complete zone, rather than a `named.conf` include.
 
-## 📄 License
+Copy/download buttons become available after generation. Editing inputs flags the output as stale; exports continue to use the last generated content and settings until regeneration. Clipboard/download failures provide recovery guidance.
 
-MIT License - feel free to use and modify as needed.
+## Current limitations
 
-## 🙏 Acknowledgments
+- The inherited default `172.16.` filter does **not** generate a correct `/16` reverse zone. For supported reverse output, use one three-octet prefix ending in a dot.
+- Dotted-relative names, conflicting aliases, fully qualified reverse-header settings and name normalisation have known issues. Use short host/admin labels and inspect the result carefully.
+- IPv6, arbitrary CIDR ranges, multi-zone reverse output and comprehensive DNS validation are unsupported.
+- Hourly serials are not automatically incremented against installed DNS state.
+- Warnings do not block generation. Validate complete output with BIND before installing it; the application never applies DNS changes.
 
-Built with vanilla HTML, CSS, and JavaScript. Inspired by the need to migrate DNS configurations from dnsmasq to BIND9 in enterprise environments.
+See [docs/known-issues.md](docs/known-issues.md) for reproductions and mitigations. The two-tab interface and BIND → `/etc/hosts` converter are planned in [ROADMAP.md](ROADMAP.md), not included in this version.
+
+## Develop and test
+
+Requires Node 22+; CI uses Node 24. There are no npm runtime/development dependencies.
+
+```bash
+npm ci --ignore-scripts --no-audit --no-fund
+npm run check
+npm run test:coverage
+npm run test:bind
+```
+
+The last command requires `named-checkzone`. [docs/testing.md](docs/testing.md) explains unit fixtures, BIND checks, focused source checks and Semgrep commands. Playwright is intentionally disabled in CI by owner request; [EX-001](docs/engineering/EXCEPTIONS.md) records the gap. Unit adapter tests are not browser verification.
+
+The workflow validates pull requests and `main`, then deploys only after all configured gates pass. Hosted execution and repository-required checks must be verified by the maintainer. See [docs/verification.md](docs/verification.md) for the checks actually performed when preparing this package.
+
+## Layout and guidance
+
+| Path | Role |
+| --- | --- |
+| `public/index.html` | UI markup; only publishable assets belong under `public/`. |
+| `public/assets/css/styles.css` | Presentation. |
+| `public/assets/js/core.js` | Pure parsing, analysis and zone formatting. |
+| `public/assets/js/converter.js` | Complete conversion result and export metadata. |
+| `public/assets/js/ui.js` | DOM, event handlers, clipboard and download adapters. |
+| `public/assets/js/app.js` | Browser entry point. |
+| `public/assets/images/favicon.svg` | Local vector favicon. |
+| `tests/`, `scripts/` | Verification code and fixtures, outside the publish root. |
+| `docs/` | Testing, security review, known issues and engineering policy. |
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md), [AGENTS.md](AGENTS.md) and [SECURITY.md](SECURITY.md) before making changes. Keep historical compatibility cases separate from assertions of correct DNS behaviour.
+
+## Licence
+
+The original README states MIT licensing. The reviewed repository has no standalone `LICENSE` file; this foundation change does not invent a copyright holder or alter licence terms.

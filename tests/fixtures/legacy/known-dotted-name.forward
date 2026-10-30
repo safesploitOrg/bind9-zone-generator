@@ -1,0 +1,8 @@
+; ================================
+; Generated BIND9 Records
+; Primary hostname = A record
+; Additional names = CNAME records
+; ================================
+
+app.internal                     IN       A        192.0.2.10
+www.internal                     IN       CNAME    app.internal

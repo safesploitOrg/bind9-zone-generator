@@ -1,0 +1,10 @@
+[
+  {
+    "type": "warn",
+    "message": "Hostname 'shared' appears on multiple IPs: 192.0.2.10, 192.0.2.20. This may be intended round-robin, but aliases should not be CNAMEs in that case."
+  },
+  {
+    "type": "info",
+    "message": "IP 192.0.2.10 has multiple names: app, shared. Reverse DNS will use the first primary hostname only."
+  }
+]

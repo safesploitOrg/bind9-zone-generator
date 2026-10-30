@@ -1,0 +1,10 @@
+[
+  {
+    "type": "warn",
+    "message": "Line 5: skipped invalid IPv4 address: 192.0.2.999"
+  },
+  {
+    "type": "warn",
+    "message": "Line 6: skipped because it has fewer than 2 fields."
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "name": "bind9-zone-generator",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "Local browser conversion from dnsmasq hosts.d records to BIND9 zone text",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "check:source": "node scripts/check-source.mjs",
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:coverage": "node --test --experimental-test-coverage tests/unit/*.test.mjs",
+    "test:bind": "node scripts/check-bind.mjs",
+    "check": "npm run check:source && npm test"
+  }
+}
